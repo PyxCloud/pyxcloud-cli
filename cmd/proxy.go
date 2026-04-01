@@ -72,6 +72,12 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// DEBUG: Log the public key derived from the private key for fingerprint matching
+	pubKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
+	log.Printf("[Local Bridge] DEBUG: Private key parsed OK. Public key type: %s", signer.PublicKey().Type())
+	log.Printf("[Local Bridge] DEBUG: Derived public key (first 120 chars): %.120s", string(pubKeyBytes))
+	log.Printf("[Local Bridge] DEBUG: Private key PEM header (first 40 chars): %.40s", initMsg.PrivateKey)
+
 	config := &ssh.ClientConfig{
 		User: initMsg.User,
 		Auth: []ssh.AuthMethod{
