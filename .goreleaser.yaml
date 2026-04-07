@@ -48,3 +48,37 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+
+nfpms:
+  - vendor: "CumulusCorp Inc."
+    homepage: "https://pyxcloud.io"
+    maintainer: "CumulusCorp <support@pyxcloud.io>"
+    description: "PyxCloud CLI"
+    license: "Proprietary"
+    formats:
+      - apk
+      - deb
+      - rpm
+    bindir: /usr/bin
+
+brews:
+  - repository:
+      owner: pyxcloud
+      name: homebrew-tap
+    commit_author:
+      name: goreleaserbot
+      email: bot@pyxcloud.io
+    homepage: "https://pyxcloud.io"
+    description: "PyxCloud CLI"
+    license: "Proprietary"
+
+scoops:
+  - repository:
+      owner: pyxcloud
+      name: scoop-bucket
+    commit_author:
+      name: goreleaserbot
+      email: bot@pyxcloud.io
+    homepage: "https://pyxcloud.io"
+    description: "PyxCloud CLI"
+    license: "Proprietary"

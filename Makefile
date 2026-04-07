@@ -14,7 +14,7 @@ release-local:
 	docker run --rm --privileged \
 		-v $(PWD):/go/src/github.com/user/pyxcloud-cli \
 		-w /go/src/github.com/user/pyxcloud-cli \
-		goreleaser/goreleaser build --snapshot --clean
+		goreleaser/goreleaser release --snapshot --clean
 
 clean:
 	go clean
