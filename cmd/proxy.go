@@ -43,51 +43,15 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer conn.Close()
 	log.Println("[Local Bridge] WebSocket connected")
 
-	var sshSession *ssh.Session
-	var stdin io.WriteCloser
-
-	// Wait for init message
-	_, msg, err := conn.ReadMessage()
+	initMsg, err := handleWebSocketInit(conn)
 	if err != nil {
-		log.Println("[Local Bridge] Read init error:", err)
+		log.Println("[Local Bridge] Init error:", err)
+		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"%s"}`, err.Error())))
 		return
-	}
-	log.Println("[Local Bridge] Received init payload")
-
-	var initMsg InitPayload
-	if err := json.Unmarshal(msg, &initMsg); err != nil {
-		log.Println("[Local Bridge] Unmarshal init error:", err)
-		return
-	}
-
-	if initMsg.Type != "init" {
-		log.Println("[Local Bridge] First message must be init")
-		return
-	}
-
-	signer, err := ssh.ParsePrivateKey([]byte(initMsg.PrivateKey))
-	if err != nil {
-		log.Println("[Local Bridge] Parse private key error:", err)
-		conn.WriteMessage(websocket.TextMessage, []byte(`{"type":"error","message":"Invalid private key"}`))
-		return
-	}
-
-	// DEBUG: Log the public key derived from the private key for fingerprint matching
-	pubKeyBytes := ssh.MarshalAuthorizedKey(signer.PublicKey())
-	log.Printf("[Local Bridge] DEBUG: Private key parsed OK. Public key type: %s", signer.PublicKey().Type())
-	log.Printf("[Local Bridge] DEBUG: Derived public key (first 120 chars): %.120s", string(pubKeyBytes))
-	log.Printf("[Local Bridge] DEBUG: Private key PEM header (first 40 chars): %.40s", initMsg.PrivateKey)
-
-	config := &ssh.ClientConfig{
-		User: initMsg.User,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // For simplicity in bridge
 	}
 
 	log.Printf("[Local Bridge] Dialing SSH to %s@%s:22...\n", initMsg.User, initMsg.Host)
-	client, err := ssh.Dial("tcp", initMsg.Host+":22", config)
+	client, err := setupSSHClient(initMsg)
 	if err != nil {
 		log.Println("[Local Bridge] SSH dial error:", err)
 		conn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"type":"error","message":"%s"}`, err.Error())))
@@ -96,50 +60,18 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	defer client.Close()
 	log.Println("[Local Bridge] SSH Dial successful")
 
-	sshSession, err = client.NewSession()
+	sshSession, err := client.NewSession()
 	if err != nil {
 		log.Println("[Local Bridge] SSH session error:", err)
 		return
 	}
 	defer sshSession.Close()
 
-	stdin, err = sshSession.StdinPipe()
+	stdin, stdout, stderr, err := setupSSHPipesAndShell(sshSession)
 	if err != nil {
-		log.Println("[Local Bridge] Stdin pipe error:", err)
+		log.Println("[Local Bridge] SSH setup error:", err)
 		return
 	}
-
-	stdout, err := sshSession.StdoutPipe()
-	if err != nil {
-		log.Println("[Local Bridge] Stdout pipe error:", err)
-		return
-	}
-
-	stderr, err := sshSession.StderrPipe()
-	if err != nil {
-		log.Println("[Local Bridge] Stderr pipe error:", err)
-		return
-	}
-
-	// Request pseudo terminal
-	modes := ssh.TerminalModes{
-		ssh.ECHO:          1,     // enable echoing
-		ssh.TTY_OP_ISPEED: 14400, // input speed = 14.4kbaud
-		ssh.TTY_OP_OSPEED: 14400, // output speed = 14.4kbaud
-	}
-
-	log.Println("[Local Bridge] Requesting PTY...")
-	if err := sshSession.RequestPty("xterm-256color", 80, 40, modes); err != nil {
-		log.Println("[Local Bridge] Request pty error:", err)
-		return
-	}
-
-	log.Println("[Local Bridge] Starting Shell...")
-	if err := sshSession.Shell(); err != nil {
-		log.Println("[Local Bridge] Shell error:", err)
-		return
-	}
-	log.Println("[Local Bridge] Shell started successfully")
 
 	// Send ready
 	var writeMu sync.Mutex
@@ -151,52 +83,8 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	writeMsg([]byte(`{"type":"ready"}`))
 
-	// Forward SSH output to WebSocket
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			n, err := stdout.Read(buf)
-			if n > 0 {
-				log.Printf("[Local Bridge] Read %d bytes from stdout\n", n)
-				data, jerr := json.Marshal(map[string]string{
-					"type": "data",
-					"data": string(buf[:n]),
-				})
-				if jerr != nil {
-					log.Println("[Local Bridge] JSON Marshal error:", jerr)
-				} else {
-					writeMsg(data)
-				}
-			}
-			if err != nil {
-				log.Println("[Local Bridge] stdout read error:", err)
-				break
-			}
-		}
-	}()
-
-	go func() {
-		buf := make([]byte, 1024)
-		for {
-			n, err := stderr.Read(buf)
-			if n > 0 {
-				log.Printf("[Local Bridge] Read %d bytes from stderr\n", n)
-				data, jerr := json.Marshal(map[string]string{
-					"type": "data",
-					"data": string(buf[:n]),
-				})
-				if jerr != nil {
-					log.Println("[Local Bridge] JSON Marshal stderr error:", jerr)
-				} else {
-					writeMsg(data)
-				}
-			}
-			if err != nil {
-				log.Println("[Local Bridge] stderr read error:", err)
-				break
-			}
-		}
-	}()
+	go pumpOutput(stdout, writeMsg, "stdout")
+	go pumpOutput(stderr, writeMsg, "stderr")
 
 	// Forward WebSocket input to SSH
 	for {
@@ -214,6 +102,95 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+func setupSSHPipesAndShell(sshSession *ssh.Session) (io.WriteCloser, io.Reader, io.Reader, error) {
+	stdin, err := sshSession.StdinPipe()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("stdin pipe: %w", err)
+	}
+
+	stdout, err := sshSession.StdoutPipe()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("stdout pipe: %w", err)
+	}
+
+	stderr, err := sshSession.StderrPipe()
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("stderr pipe: %w", err)
+	}
+
+	modes := ssh.TerminalModes{
+		ssh.ECHO:          1,
+		ssh.TTY_OP_ISPEED: 14400,
+		ssh.TTY_OP_OSPEED: 14400,
+	}
+
+	log.Println("[Local Bridge] Requesting PTY...")
+	if err := sshSession.RequestPty("xterm-256color", 80, 40, modes); err != nil {
+		return nil, nil, nil, fmt.Errorf("request pty: %w", err)
+	}
+
+	log.Println("[Local Bridge] Starting Shell...")
+	if err := sshSession.Shell(); err != nil {
+		return nil, nil, nil, fmt.Errorf("start shell: %w", err)
+	}
+	log.Println("[Local Bridge] Shell started successfully")
+
+	return stdin, stdout, stderr, nil
+}
+
+func pumpOutput(r io.Reader, writeMsg func([]byte) error, streamName string) {
+	buf := make([]byte, 1024)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			log.Printf("[Local Bridge] Read %d bytes from %s\n", n, streamName)
+			data, jerr := json.Marshal(map[string]string{
+				"type": "data",
+				"data": string(buf[:n]),
+			})
+			if jerr != nil {
+				log.Printf("[Local Bridge] JSON Marshal %s error: %v\n", streamName, jerr)
+			} else {
+				writeMsg(data)
+			}
+		}
+		if err != nil {
+			log.Printf("[Local Bridge] %s read error: %v\n", streamName, err)
+			break
+		}
+	}
+}
+
+func handleWebSocketInit(conn *websocket.Conn) (InitPayload, error) {
+	var initMsg InitPayload
+	_, msg, err := conn.ReadMessage()
+	if err != nil {
+		return initMsg, fmt.Errorf("read init payload: %w", err)
+	}
+	if err := json.Unmarshal(msg, &initMsg); err != nil {
+		return initMsg, fmt.Errorf("unmarshal init payload: %w", err)
+	}
+	if initMsg.Type != "init" {
+		return initMsg, fmt.Errorf("first message must be 'init'")
+	}
+	return initMsg, nil
+}
+
+func setupSSHClient(initMsg InitPayload) (*ssh.Client, error) {
+	signer, err := ssh.ParsePrivateKey([]byte(initMsg.PrivateKey))
+	if err != nil {
+		return nil, fmt.Errorf("invalid private key")
+	}
+
+	config := &ssh.ClientConfig{
+		User: initMsg.User,
+		Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+	}
+
+	return ssh.Dial("tcp", initMsg.Host+":22", config)
 }
 
 var proxyCmd = &cobra.Command{

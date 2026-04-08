@@ -21,8 +21,11 @@ import (
 )
 
 const (
-	callbackPath = "/callback"
-	htmlSuccess  = `<!DOCTYPE html>
+	callbackPath      = "/callback"
+	contentTypeHeader = "Content-Type"
+	contentTypeHTML   = "text/html"
+	errorMsgToken     = "{{ERROR_MSG}}"
+	htmlSuccess       = `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -238,26 +241,26 @@ func loginWithBrowser(cmd *cobra.Command, backendURL string) error {
 	mux := http.NewServeMux()
 	mux.HandleFunc(callbackPath, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("state") != state {
-			w.Header().Set("Content-Type", "text/html")
-			io.WriteString(w, strings.Replace(htmlError, "{{ERROR_MSG}}", "Invalid state parameter", 1))
+			w.Header().Set(contentTypeHeader, contentTypeHTML)
+			io.WriteString(w, strings.Replace(htmlError, errorMsgToken, "Invalid state parameter", 1))
 			errCh <- fmt.Errorf("state mismatch")
 			return
 		}
 		if errParam := r.URL.Query().Get("error"); errParam != "" {
 			desc := r.URL.Query().Get("error_description")
-			w.Header().Set("Content-Type", "text/html")
-			io.WriteString(w, strings.Replace(htmlError, "{{ERROR_MSG}}", desc, 1))
+			w.Header().Set(contentTypeHeader, contentTypeHTML)
+			io.WriteString(w, strings.Replace(htmlError, errorMsgToken, desc, 1))
 			errCh <- fmt.Errorf("auth error: %s — %s", errParam, desc)
 			return
 		}
 		code := r.URL.Query().Get("code")
 		if code == "" {
-			w.Header().Set("Content-Type", "text/html")
-			io.WriteString(w, strings.Replace(htmlError, "{{ERROR_MSG}}", "No authorization code received", 1))
+			w.Header().Set(contentTypeHeader, contentTypeHTML)
+			io.WriteString(w, strings.Replace(htmlError, errorMsgToken, "No authorization code received", 1))
 			errCh <- fmt.Errorf("no code in callback")
 			return
 		}
-		w.Header().Set("Content-Type", "text/html")
+		w.Header().Set(contentTypeHeader, contentTypeHTML)
 		io.WriteString(w, htmlSuccess)
 		codeCh <- code
 	})

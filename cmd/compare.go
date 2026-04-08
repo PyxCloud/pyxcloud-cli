@@ -114,6 +114,13 @@ func renderSection(section map[string]interface{}) {
 	// Build dynamic header
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 
+	renderCompareTableHeader(w, providerNames)
+	renderCompareTableRows(w, rawRows, componentNames)
+
+	w.Flush()
+}
+
+func renderCompareTableHeader(w *tabwriter.Writer, providerNames []string) {
 	// Header row: REGION | PROVIDER1 | PROVIDER2 | ...
 	headerParts := []string{"  REGION"}
 	for _, pName := range providerNames {
@@ -127,7 +134,9 @@ func renderSection(section map[string]interface{}) {
 		sepParts = append(sepParts, "------")
 	}
 	fmt.Fprintln(w, strings.Join(sepParts, "\t"))
+}
 
+func renderCompareTableRows(w *tabwriter.Writer, rawRows []interface{}, componentNames []string) {
 	// Data rows
 	for _, rawRow := range rawRows {
 		row, ok := rawRow.([]interface{})
@@ -161,8 +170,6 @@ func renderSection(section map[string]interface{}) {
 			fmt.Fprintln(w, strings.Join(parts, "\t"))
 		}
 	}
-
-	w.Flush()
 }
 
 // collectComponentNames gathers all unique component names across all provider cells.

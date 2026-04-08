@@ -12,6 +12,12 @@ import (
 	"github.com/pyxcloud/pyxcloud-cli/internal/config"
 )
 
+const (
+	contentTypeJSON   = "application/json"
+	errAuthRefreshFmt = "auth refresh: %w"
+	errFailedHTTPFmt  = "failed (HTTP %d): %s"
+)
+
 // Client talks to the PyxCloud backend CLI API.
 type Client struct {
 	BaseURL      string
@@ -57,9 +63,9 @@ func (c *Client) ensureToken() error {
 	refreshURL := c.BaseURL + "/cli/refresh"
 	payload, _ := json.Marshal(map[string]string{"pat": c.RefreshToken})
 
-	resp, err := c.HTTPClient.Post(refreshURL, "application/json", bytes.NewReader(payload))
+	resp, err := c.HTTPClient.Post(refreshURL, contentTypeJSON, bytes.NewReader(payload))
 	if err != nil {
-		return fmt.Errorf("auth refresh: %w", err)
+		return fmt.Errorf(errAuthRefreshFmt, err)
 	}
 	defer resp.Body.Close()
 
@@ -85,7 +91,7 @@ func (c *Client) ensureToken() error {
 func (c *Client) DoRequest(method, path string, body interface{}) ([]byte, int, error) {
 	// Auto-refresh token before each call
 	if err := c.ensureToken(); err != nil {
-		return nil, 0, fmt.Errorf("auth refresh: %w", err)
+		return nil, 0, fmt.Errorf(errAuthRefreshFmt, err)
 	}
 
 	var bodyReader io.Reader
@@ -103,8 +109,8 @@ func (c *Client) DoRequest(method, path string, body interface{}) ([]byte, int, 
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.Token)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", contentTypeJSON)
+	req.Header.Set("Accept", contentTypeJSON)
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -140,7 +146,7 @@ func (c *Client) Projects() ([]map[string]interface{}, error) {
 		return nil, err
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("failed (HTTP %d): %s", status, string(data))
+		return nil, fmt.Errorf(errFailedHTTPFmt, status, string(data))
 	}
 	var result []map[string]interface{}
 	return result, json.Unmarshal(data, &result)
@@ -153,7 +159,7 @@ func (c *Client) Builds(projectID string) ([]map[string]interface{}, error) {
 		return nil, err
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("failed (HTTP %d): %s", status, string(data))
+		return nil, fmt.Errorf(errFailedHTTPFmt, status, string(data))
 	}
 	var result []map[string]interface{}
 	return result, json.Unmarshal(data, &result)
@@ -170,7 +176,7 @@ func (c *Client) Compare(projectID, buildVersion, tableId string) (map[string]in
 		return nil, err
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("failed (HTTP %d): %s", status, string(data))
+		return nil, fmt.Errorf(errFailedHTTPFmt, status, string(data))
 	}
 	var result map[string]interface{}
 	return result, json.Unmarshal(data, &result)
@@ -212,7 +218,7 @@ func (c *Client) Status(projectID, buildVersion string) (map[string]interface{},
 		return nil, err
 	}
 	if status != 200 {
-		return nil, fmt.Errorf("failed (HTTP %d): %s", status, string(data))
+		return nil, fmt.Errorf(errFailedHTTPFmt, status, string(data))
 	}
 	var result map[string]interface{}
 	return result, json.Unmarshal(data, &result)
@@ -397,7 +403,7 @@ func (c *Client) TokenRevoke(tokenID string) error {
 // DoRequestWithHeaders performs an authenticated HTTP request with extra headers.
 func (c *Client) DoRequestWithHeaders(method, path string, body interface{}, extraHeaders map[string]string) ([]byte, int, error) {
 	if err := c.ensureToken(); err != nil {
-		return nil, 0, fmt.Errorf("auth refresh: %w", err)
+		return nil, 0, fmt.Errorf(errAuthRefreshFmt, err)
 	}
 
 	var bodyReader io.Reader
@@ -415,8 +421,8 @@ func (c *Client) DoRequestWithHeaders(method, path string, body interface{}, ext
 	}
 
 	req.Header.Set("Authorization", "Bearer "+c.Token)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", contentTypeJSON)
+	req.Header.Set("Accept", contentTypeJSON)
 	for k, v := range extraHeaders {
 		req.Header.Set(k, v)
 	}

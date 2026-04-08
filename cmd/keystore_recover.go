@@ -10,11 +10,18 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"strings"
 	"time"
 
 	"github.com/pyxcloud/pyxcloud-cli/internal/config"
 	"github.com/pyxcloud/pyxcloud-cli/internal/shamir"
 	"github.com/spf13/cobra"
+)
+
+const (
+	contentTypeHeader = "Content-Type"
+	contentTypeHTML   = "text/html"
+	errorTarget       = "{{ERROR}}"
 )
 
 // keystoreRecoverCmd performs key recovery via Keycloak re-authentication:
@@ -155,31 +162,7 @@ func stepUpViaKeycloak(client interface{}) (string, error) {
 	errCh := make(chan error, 1)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/step-up-callback", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("state") != state {
-			w.Header().Set("Content-Type", "text/html")
-			io.WriteString(w, strings.Replace(stepUpCallbackError, "{{ERROR}}", "Invalid state — possible CSRF attack", 1))
-			errCh <- fmt.Errorf("state mismatch")
-			return
-		}
-		if errParam := r.URL.Query().Get("error"); errParam != "" {
-			desc := r.URL.Query().Get("error_description")
-			w.Header().Set("Content-Type", "text/html")
-			io.WriteString(w, strings.Replace(stepUpCallbackError, "{{ERROR}}", desc, 1))
-			errCh <- fmt.Errorf("auth error: %s — %s", errParam, desc)
-			return
-		}
-		code := r.URL.Query().Get("code")
-		if code == "" {
-			w.Header().Set("Content-Type", "text/html")
-			io.WriteString(w, strings.Replace(stepUpCallbackError, "{{ERROR}}", "No authorization code received", 1))
-			errCh <- fmt.Errorf("no code in callback")
-			return
-		}
-		w.Header().Set("Content-Type", "text/html")
-		io.WriteString(w, stepUpCallbackSuccess)
-		codeCh <- code
-	})
+	mux.HandleFunc("/step-up-callback", createStepUpCallback(state, codeCh, errCh))
 
 	srv := &http.Server{Handler: mux}
 	go func() {
@@ -255,6 +238,34 @@ func stepUpViaKeycloak(client interface{}) (string, error) {
 	}
 
 	return stepUpToken, nil
+}
+
+func createStepUpCallback(state string, codeCh chan string, errCh chan error) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("state") != state {
+			w.Header().Set(contentTypeHeader, contentTypeHTML)
+			io.WriteString(w, strings.Replace(stepUpCallbackError, errorTarget, "Invalid state — possible CSRF attack", 1))
+			errCh <- fmt.Errorf("state mismatch")
+			return
+		}
+		if errParam := r.URL.Query().Get("error"); errParam != "" {
+			desc := r.URL.Query().Get("error_description")
+			w.Header().Set(contentTypeHeader, contentTypeHTML)
+			io.WriteString(w, strings.Replace(stepUpCallbackError, errorTarget, desc, 1))
+			errCh <- fmt.Errorf("auth error: %s — %s", errParam, desc)
+			return
+		}
+		code := r.URL.Query().Get("code")
+		if code == "" {
+			w.Header().Set(contentTypeHeader, contentTypeHTML)
+			io.WriteString(w, strings.Replace(stepUpCallbackError, errorTarget, "No authorization code received", 1))
+			errCh <- fmt.Errorf("no code in callback")
+			return
+		}
+		w.Header().Set(contentTypeHeader, contentTypeHTML)
+		io.WriteString(w, stepUpCallbackSuccess)
+		codeCh <- code
+	}
 }
 
 // ─── Self-contained HTML for the step-up callback ───────────────────────

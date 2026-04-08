@@ -5,8 +5,12 @@ import (
 	"os"
 	"strings"
 	"text/tabwriter"
-
 	"github.com/spf13/cobra"
+)
+
+const (
+	flagUserID = "user-id"
+	flagRole   = "role"
 )
 
 // settingsCmd mirrors the "Settings" sidebar page.
@@ -160,8 +164,8 @@ var settingsAssignRoleCmd = &cobra.Command{
 	Use:   "assign-role",
 	Short: "Assign a role to a user",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		userID, _ := cmd.Flags().GetString("user-id")
-		role, _ := cmd.Flags().GetString("role")
+		userID, _ := cmd.Flags().GetString(flagUserID)
+		role, _ := cmd.Flags().GetString(flagRole)
 		if userID == "" || role == "" {
 			return fmt.Errorf("--user-id and --role are required")
 		}
@@ -188,8 +192,8 @@ var settingsRemoveRoleCmd = &cobra.Command{
 	Use:   "remove-role",
 	Short: "Remove a role from a user",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		userID, _ := cmd.Flags().GetString("user-id")
-		role, _ := cmd.Flags().GetString("role")
+		userID, _ := cmd.Flags().GetString(flagUserID)
+		role, _ := cmd.Flags().GetString(flagRole)
 		if userID == "" || role == "" {
 			return fmt.Errorf("--user-id and --role are required")
 		}
@@ -301,10 +305,10 @@ var settingsRevokeTokenCmd = &cobra.Command{
 
 func init() {
 	settingsInviteCmd.Flags().String("email", "", "Email of the user to invite (required)")
-	settingsAssignRoleCmd.Flags().String("user-id", "", "User ID (required)")
-	settingsAssignRoleCmd.Flags().String("role", "", "Role name to assign (required)")
-	settingsRemoveRoleCmd.Flags().String("user-id", "", "User ID (required)")
-	settingsRemoveRoleCmd.Flags().String("role", "", "Role name to remove (required)")
+	settingsAssignRoleCmd.Flags().String(flagUserID, "", "User ID (required)")
+	settingsAssignRoleCmd.Flags().String(flagRole, "", "Role name to assign (required)")
+	settingsRemoveRoleCmd.Flags().String(flagUserID, "", "User ID (required)")
+	settingsRemoveRoleCmd.Flags().String(flagRole, "", "Role name to remove (required)")
 	settingsCreateTokenCmd.Flags().String("name", "", "Token name (required)")
 	settingsRevokeTokenCmd.Flags().String("id", "", "Token ID to revoke (required)")
 
