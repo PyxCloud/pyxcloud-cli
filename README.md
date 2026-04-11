@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://pyxcloud.io/favicon/android-chrome-192x192.png" alt="PyxCloud" width="80" />
+  <img src=".github/logo.png" alt="PyxCloud" width="80" />
 </p>
 
 <h1 align="center">PyxCloud CLI</h1>
@@ -10,11 +10,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/PyxCloud/pyxcloud-cli/releases/latest"><img src="https://img.shields.io/github/v/release/PyxCloud/pyxcloud-cli?style=flat-square&color=0076d1" alt="Latest Release" /></a>
-  <a href="https://github.com/PyxCloud/pyxcloud-cli/actions/workflows/releaser.yml"><img src="https://img.shields.io/github/actions/workflow/status/PyxCloud/pyxcloud-cli/releaser.yml?style=flat-square&label=release" alt="Release Status" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-proprietary-333?style=flat-square" alt="License" /></a>
+  <img src="https://img.shields.io/badge/version-0.2.0-0076d1?style=flat-square" alt="Version 0.2.0" />
+  <img src="https://img.shields.io/badge/license-proprietary-333?style=flat-square" alt="License" />
   <img src="https://img.shields.io/badge/go-1.25-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.25" />
+  <img src="https://img.shields.io/badge/platforms-linux%20%7C%20macOS%20%7C%20windows-blue?style=flat-square" alt="Platforms" />
 </p>
+
 
 ---
 
