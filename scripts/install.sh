@@ -5,7 +5,7 @@ set -e
 # curl -sL https://pyxcloud.io/install.sh | bash
 
 VERSION="latest"
-REPO="pyxcloud/pyxcloud-cli"
+REPO="PyxCloud/pyxcloud-cli"
 
 echo "☁️  Installing PyxCloud CLI..."
 

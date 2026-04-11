@@ -22,7 +22,7 @@ builds:
       - goos: darwin
         goarch: 386
     ldflags:
-      - -s -w
+      - -s -w -X github.com/pyxcloud/pyxcloud-cli/cmd.Version={{.Version}}
 
 archives:
   - format: tar.gz
@@ -61,24 +61,46 @@ nfpms:
       - rpm
     bindir: /usr/bin
 
-brews:
-  - repository:
-      owner: pyxcloud
-      name: homebrew-tap
-    commit_author:
-      name: goreleaserbot
-      email: bot@pyxcloud.io
-    homepage: "https://pyxcloud.io"
-    description: "PyxCloud CLI"
-    license: "Proprietary"
+release:
+  github:
+    owner: PyxCloud
+    name: pyxcloud-cli
+  draft: false
+  prerelease: auto
+  name_template: "PyxCloud CLI v{{.Version}}"
+  header: |
+    ## PyxCloud CLI v{{.Version}}
+    
+    ### Installation
+    
+    **macOS / Linux (universal installer):**
+    ```bash
+    curl -sL https://github.com/PyxCloud/pyxcloud-cli/releases/latest/download/install.sh | bash
+    ```
+    
+    **Manual download:** Pick the archive matching your OS and architecture from the assets below.
+  extra_files:
+    - glob: scripts/install.sh
 
-scoops:
-  - repository:
-      owner: pyxcloud
-      name: scoop-bucket
-    commit_author:
-      name: goreleaserbot
-      email: bot@pyxcloud.io
-    homepage: "https://pyxcloud.io"
-    description: "PyxCloud CLI"
-    license: "Proprietary"
+# Temporarily disabled — requires external repos (homebrew-tap, scoop-bucket)
+# brews:
+#   - repository:
+#       owner: pyxcloud
+#       name: homebrew-tap
+#     commit_author:
+#       name: goreleaserbot
+#       email: bot@pyxcloud.io
+#     homepage: "https://pyxcloud.io"
+#     description: "PyxCloud CLI"
+#     license: "Proprietary"
+#
+# scoops:
+#   - repository:
+#       owner: pyxcloud
+#       name: scoop-bucket
+#     commit_author:
+#       name: goreleaserbot
+#       email: bot@pyxcloud.io
+#     homepage: "https://pyxcloud.io"
+#     description: "PyxCloud CLI"
+#     license: "Proprietary"
