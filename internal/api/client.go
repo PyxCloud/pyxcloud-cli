@@ -470,3 +470,117 @@ func (c *Client) KeystoreHalfB(keyID, stepUpToken string) (map[string]interface{
 	var result map[string]interface{}
 	return result, json.Unmarshal(data, &result)
 }
+
+// ── Project CRUD ────────────────────────────────────────────────────────
+
+// ProjectCreate creates a new project.
+func (c *Client) ProjectCreate(body interface{}) (map[string]interface{}, error) {
+	data, status, err := c.DoRequest("POST", "/cli/projects", body)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 && status != 201 {
+		return nil, fmt.Errorf("project create failed (HTTP %d): %s", status, string(data))
+	}
+	var result map[string]interface{}
+	return result, json.Unmarshal(data, &result)
+}
+
+// ProjectDelete deletes a project by ID.
+func (c *Client) ProjectDelete(projectID string) error {
+	data, status, err := c.DoRequest("DELETE", "/cli/projects/"+projectID, nil)
+	if err != nil {
+		return err
+	}
+	if status != 200 && status != 204 {
+		return fmt.Errorf("project delete failed (HTTP %d): %s", status, string(data))
+	}
+	return nil
+}
+
+// ── Account Binding CRUD ────────────────────────────────────────────────
+
+// AccountList lists all account bindings.
+func (c *Client) AccountList() ([]map[string]interface{}, error) {
+	data, status, err := c.DoRequest("GET", "/cli/accounts", nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("account list failed (HTTP %d): %s", status, string(data))
+	}
+	var result []map[string]interface{}
+	return result, json.Unmarshal(data, &result)
+}
+
+// AccountCreate creates a new account binding.
+func (c *Client) AccountCreate(body interface{}) (map[string]interface{}, error) {
+	data, status, err := c.DoRequest("POST", "/cli/accounts", body)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 && status != 201 {
+		return nil, fmt.Errorf("account create failed (HTTP %d): %s", status, string(data))
+	}
+	var result map[string]interface{}
+	return result, json.Unmarshal(data, &result)
+}
+
+// AccountDelete deletes an account binding by ID.
+func (c *Client) AccountDelete(accountID string) error {
+	data, status, err := c.DoRequest("DELETE", "/cli/accounts/"+accountID, nil)
+	if err != nil {
+		return err
+	}
+	if status != 200 && status != 204 {
+		return fmt.Errorf("account delete failed (HTTP %d): %s", status, string(data))
+	}
+	return nil
+}
+
+// AccountVerify verifies account binding credentials.
+func (c *Client) AccountVerify(accountID string) (map[string]interface{}, error) {
+	data, status, err := c.DoRequest("POST", "/cli/accounts/"+accountID+"/verify", nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("account verify failed (HTTP %d): %s", status, string(data))
+	}
+	var result map[string]interface{}
+	return result, json.Unmarshal(data, &result)
+}
+
+// ── Import Workflow ─────────────────────────────────────────────────────
+
+// ImportDiscover discovers cloud resources from an account binding.
+func (c *Client) ImportDiscover(accountID string) (map[string]interface{}, error) {
+	body := map[string]interface{}{"accountId": accountID}
+	data, status, err := c.DoRequest("POST", "/cli/import/discover", body)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("import discover failed (HTTP %d): %s", status, string(data))
+	}
+	var result map[string]interface{}
+	return result, json.Unmarshal(data, &result)
+}
+
+// ImportBuild creates a Build from imported resources.
+func (c *Client) ImportBuild(projectID, accountID string, selectedIDs []string) (map[string]interface{}, error) {
+	body := map[string]interface{}{
+		"projectId":   projectID,
+		"accountId":   accountID,
+		"selectedIds": selectedIDs,
+	}
+	data, status, err := c.DoRequest("POST", "/cli/import/build", body)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("import build failed (HTTP %d): %s", status, string(data))
+	}
+	var result map[string]interface{}
+	return result, json.Unmarshal(data, &result)
+}

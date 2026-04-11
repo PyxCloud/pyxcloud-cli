@@ -114,15 +114,20 @@ pyxcloud auth logout
 
 ### `pyxcloud projects`
 
-List all projects in the current organisation.
+Manage projects in the current organisation.
 
-```
-$ pyxcloud projects
+```bash
+# List all projects (default action)
+pyxcloud projects
+pyxcloud projects list
 
-ID   NAME              DEPLOYED VERSION
---   ----              ----------------
-42   production-stack   0.3.0
-51   staging-env        0.1.0
+# Create a new project
+pyxcloud projects create --name "production-stack"
+pyxcloud projects create --name "staging-env" --description "Staging environment"
+
+# Delete a project and all its builds
+pyxcloud projects delete --id 42
+pyxcloud projects delete --id 42 --force
 ```
 
 ---
@@ -181,6 +186,60 @@ pyxcloud arch destroy -p 42
 
 # Skip prompt (CI/CD)
 pyxcloud arch destroy -p 42 --force
+```
+
+---
+
+### `pyxcloud accounts` (alias: `acc`)
+
+Manage cloud provider account bindings — the credentials PyxCloud uses to provision infrastructure.
+
+```bash
+# List all account bindings
+pyxcloud accounts list
+
+# Create with inline credentials
+pyxcloud accounts create --provider aws --credentials '{"access_key_id":"...","secret_access_key":"..."}'
+
+# Create with credentials from a file
+pyxcloud accounts create --provider gcp --credentials-file sa-key.json --nickname "prod-gcp"
+
+# Verify credentials are valid
+pyxcloud accounts verify --id 42
+
+# Delete an account binding
+pyxcloud accounts delete --id 42
+pyxcloud accounts delete --id 42 --force
+```
+
+Supported providers: `aws`, `azure`, `gcp`, `digitalocean`, `linode`, `ubicloud`, `vultr`, `oracle`, `ibm`, `alibaba`, `stackit`, `ovh`.
+
+---
+
+### `pyxcloud import`
+
+Import existing cloud infrastructure into PyxCloud — the CLI equivalent of the Import Wizard.
+
+#### `import discover`
+
+Scan a cloud account and list all discovered resources.
+
+```bash
+pyxcloud import discover --account 42
+```
+
+Output includes resource ID, type, name, region, and status — ready for selective import.
+
+#### `import build`
+
+Create a new Build version from discovered resources.
+
+```bash
+# Import specific resources by ID
+pyxcloud import build --account 42 --project 51 --select vm-abc123,vpc-def456
+
+# Import all discovered resources
+pyxcloud import build --account 42 --project 51 --all
 ```
 
 ---
