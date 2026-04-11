@@ -181,15 +181,15 @@ var secretsImportCmd = &cobra.Command{
 		creds := map[string]string{}
 		for _, f := range fields {
 			var value string
-			fmt.Printf("%s: ", f.label)
-			if f.secret {
+			fmt.Printf("%s: ", f.Label)
+			if f.Secret {
 				// We don't have terminal.ReadPassword imported globally easily, use plain for now or just standard scan
 				// For simplicity in CLI environment
 				fmt.Scanln(&value)
 			} else {
 				fmt.Scanln(&value)
 			}
-			creds[f.key] = value
+			creds[f.Key] = value
 		}
 
 		// Map to standard env format used by LocalDeployScriptService

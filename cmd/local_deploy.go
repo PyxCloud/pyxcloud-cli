@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -173,7 +172,7 @@ func RunLocalDeploy(cmd *cobra.Command, projectID, buildVersion string) error {
 	// Generate JWT context internally (bypass performStepUpWebflow logic inside client methods, just prompt UI)
 	fmt.Println("Completing deployment...")
 	
-	stepUpToken, err := ProvideStepUpToken(client, "stepup")
+	stepUpToken, err := stepUpViaKeycloak(client)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve step-up token: %w", err)
 	}
@@ -202,27 +201,5 @@ func validateLocalSecrets(required []string) error {
 		return fmt.Errorf("%s", strings.Join(missing, ", "))
 	}
 	return nil
-}
-
-// ProvideStepUpToken abstracts the browser webflow for step up.
-func ProvideStepUpToken(client *clientWrapper, audience string) (string, error) {
-	fmt.Println("Opening browser for Step-Up Authentication (MFA)...")
-	// The client has PerformStepUpWebflow, we can use it.
-	// We need to type assert or use the standard client
-	// wait, 'client' in RunLocalDeploy is '*Client' standard package, but in cmd we have `getClient` which returns an interface
-	// let's do this directly.
-	return PerformStepUpWebflow(audience)
-}
-
-func PerformStepUpWebflow(audience string) (string, error) {
-	client, err := getClient()
-	if err != nil {
-		return "", err
-	}
-	// The real PerformStepUpWebflow is defined in credentials_oauth.go or we can call it.
-	// But it requires an access token to poll.
-	// Wait, the Keystore recover calls `token, err := performStepUpWebflow("stepup")`
-	// Let's rely on that existing function in the cmd package!
-	return performStepUpWebflow(audience)
 }
 
