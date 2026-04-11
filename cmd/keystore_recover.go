@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"os"
 	"strings"
-	"strings"
 	"time"
 
 	"github.com/pyxcloud/pyxcloud-cli/internal/config"
@@ -19,9 +18,7 @@ import (
 )
 
 const (
-	contentTypeHeader = "Content-Type"
-	contentTypeHTML   = "text/html"
-	errorTarget       = "{{ERROR}}"
+	errorTarget = "{{ERROR}}"
 )
 
 // keystoreRecoverCmd performs key recovery via Keycloak re-authentication:
