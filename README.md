@@ -171,6 +171,9 @@ pyxcloud arch deploy -p 42 -v 0.1.0 --non-interactive \
 
 # Non-interactive using pre-bound accounts from the console
 pyxcloud arch deploy -p 42 -v 0.1.0 --non-interactive
+
+# Execute deployment script locally (streams tf apply directly to stdout)
+pyxcloud arch deploy -p 42 -v 0.1.0 --local
 ```
 
 #### `architecture status`
@@ -241,6 +244,26 @@ pyxcloud import build --account 42 --project 51 --select vm-abc123,vpc-def456
 
 # Import all discovered resources
 pyxcloud import build --account 42 --project 51 --all
+```
+
+---
+
+### `pyxcloud secrets`
+
+Manage local secrets for local deployment (`architecture deploy --local`). These secrets are saved securely in `~/.pyxcloud/secrets.env` and are strictly read by the local deployment worker without ever leaving your machine.
+
+```bash
+# Add a secret manually
+pyxcloud secrets set AWS_ACCESS_KEY_ID=AKIA...
+
+# List saved secrets (masked)
+pyxcloud secrets list
+
+# Delete a secret
+pyxcloud secrets delete AWS_ACCESS_KEY_ID
+
+# Interactively import all required secrets for a provider
+pyxcloud secrets import --provider aws
 ```
 
 ---

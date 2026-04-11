@@ -584,3 +584,42 @@ func (c *Client) ImportBuild(projectID, accountID string, selectedIDs []string) 
 	var result map[string]interface{}
 	return result, json.Unmarshal(data, &result)
 }
+
+// ── Local Deploy ────────────────────────────────────────────────────────
+
+// DeployLocal gets the local deploy bash scripts and configuration.
+func (c *Client) DeployLocal(projectID, buildVersion string) (map[string]interface{}, error) {
+	url := fmt.Sprintf("/cli/deploy/%s/%s/local", projectID, buildVersion)
+	data, status, err := c.DoRequest("POST", url, nil)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("local deploy generation failed (HTTP %d): %s", status, string(data))
+	}
+	var result map[string]interface{}
+	return result, json.Unmarshal(data, &result)
+}
+
+// DeployComplete pushes the final tfstate back to the backend.
+// Requires a step-up token for MFA verification.
+func (c *Client) DeployComplete(projectID, buildVersion, executionID, stepUpToken string, tfStates map[string]string) (map[string]interface{}, error) {
+	url := fmt.Sprintf("/cli/deploy/%s/%s/complete", projectID, buildVersion)
+	body := map[string]interface{}{
+		"executionId": executionID,
+		"tfstates":    tfStates,
+	}
+
+	headers := map[string]string{
+		"X-StepUp-Token": stepUpToken,
+	}
+	data, status, err := c.DoRequestWithHeaders("POST", url, body, headers)
+	if err != nil {
+		return nil, err
+	}
+	if status != 200 {
+		return nil, fmt.Errorf("deploy completion failed (HTTP %d): %s", status, string(data))
+	}
+	var result map[string]interface{}
+	return result, json.Unmarshal(data, &result)
+}

@@ -31,18 +31,24 @@ Examples:
   # Standard (uses pre-configured account bindings from the UI):
   pyxcloud architecture deploy -p 42 -v 0.1.0 --non-interactive`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		projectID, _ := cmd.Flags().GetString("project")
+		buildVersion, _ := cmd.Flags().GetString("version")
+		isLocal, _ := cmd.Flags().GetBool("local")
+
+		if projectID == "" || buildVersion == "" {
+			return fmt.Errorf("--project and --version are required")
+		}
+
+		if isLocal {
+			return RunLocalDeploy(cmd, projectID, buildVersion)
+		}
+
 		client, err := getClient()
 		if err != nil {
 			return err
 		}
 
-		projectID, _ := cmd.Flags().GetString("project")
-		buildVersion, _ := cmd.Flags().GetString("version")
 		nonInteractive, _ := cmd.Flags().GetBool("non-interactive")
-
-		if projectID == "" || buildVersion == "" {
-			return fmt.Errorf("--project and --version are required")
-		}
 
 		// Try to resolve inline credentials from flags/file/env
 		payload, err := resolveCredentials(cmd)
@@ -102,5 +108,6 @@ func init() {
 	deployCmd.Flags().String("credentials", "", "Inline credentials JSON (target/source blocks)")
 	deployCmd.Flags().String("credentials-file", "", "Path to credentials JSON file")
 	deployCmd.Flags().Bool("non-interactive", false, "Skip interactive prompts (for CI/CD pipelines)")
+	deployCmd.Flags().Bool("local", false, "Execute the deployment script locally instead of PyxCloud servers")
 	architectureCmd.AddCommand(deployCmd)
 }
