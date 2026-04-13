@@ -2,7 +2,7 @@
 set -e
 
 # PyxCloud CLI Universal Installer
-# curl -sL https://pyxcloud.io/install.sh | bash
+# curl -fsSL https://pyxcloud.io/install.sh | bash
 
 VERSION="latest"
 REPO="PyxCloud/pyxcloud-cli"
@@ -35,7 +35,7 @@ fi
 
 echo "⬇️  Downloading from ${URL}..."
 TMP_DIR=$(mktemp -d)
-curl -sL "${URL}" -o "${TMP_DIR}/pyxcloud.tar.gz"
+curl -fsSL "${URL}" -o "${TMP_DIR}/pyxcloud.tar.gz"
 
 echo "📦 Extracting archive..."
 tar -xzf "${TMP_DIR}/pyxcloud.tar.gz" -C "${TMP_DIR}"
