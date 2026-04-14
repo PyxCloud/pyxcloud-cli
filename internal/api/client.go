@@ -23,7 +23,7 @@ type Client struct {
 	BaseURL      string
 	Token        string // current access_token
 	RefreshToken string // offline refresh_token (may be empty for PAT-only)
-	AuthURL      string // Keycloak token endpoint base (e.g., http://localhost:8180/realms/pyx)
+	AuthURL      string // Keycloak token endpoint base (e.g., https://beta-auth.pyxcloud.io/realms/pyx)
 	ClientID     string // OAuth2 client ID
 	HTTPClient   *http.Client
 }

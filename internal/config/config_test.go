@@ -18,7 +18,7 @@ func TestSaveAndLoad(t *testing.T) {
 
 	cfg := &Config{
 		Token:  "pyxc_testtoken12345",
-		APIURL: "http://localhost:8080",
+		APIURL: "https://beta-api.pyxcloud.io",
 	}
 	err := Save(cfg)
 	if err != nil {

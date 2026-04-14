@@ -8,9 +8,9 @@ import (
 )
 
 func TestNewClient(t *testing.T) {
-	c := NewClient("http://localhost:8080", "pyxc_test123")
-	if c.BaseURL != "http://localhost:8080" {
-		t.Errorf("BaseURL: got %q, want %q", c.BaseURL, "http://localhost:8080")
+	c := NewClient("https://beta-api.pyxcloud.io", "pyxc_test123")
+	if c.BaseURL != "https://beta-api.pyxcloud.io" {
+		t.Errorf("BaseURL: got %q, want %q", c.BaseURL, "https://beta-api.pyxcloud.io")
 	}
 	if c.Token != "pyxc_test123" {
 		t.Errorf("Token: got %q, want %q", c.Token, "pyxc_test123")
