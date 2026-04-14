@@ -15,8 +15,7 @@
             <!-- Install the Executable -->
             <File Id="PyxcloudExe" Name="pyxcloud.exe" Source="$(var.BinaryPath)" KeyPath="yes" />
 
-            <!-- Add to PATH -->
-            <Environment Id="UpdatePath" Name="PATH" Action="set" Part="last" System="yes" Value="[INSTALLFOLDER]" />
+            <!-- PATH modification via wixl is not supported, this relies purely on the URL protocol scheme -->
 
             <!-- Register Custom URL Protocol Scheme (pyxcloud://) -->
             <RegistryKey Root="HKCR" Key="pyxcloud" Action="createAndRemoveOnUninstall">
