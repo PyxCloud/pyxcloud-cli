@@ -34,7 +34,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install MSITools
-        run: sudo apt-get update && sudo apt-get install -y msitools
+        run: sudo apt-get update && sudo apt-get install -y msitools wixl
 
       - name: Build MSI Installer
         run: |
