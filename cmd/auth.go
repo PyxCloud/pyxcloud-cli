@@ -165,7 +165,7 @@ For CI/CD (non-interactive), use --token with a Keycloak JWT or offline token:
 		token, _ := cmd.Flags().GetString("token")
 		backendURL, _ := cmd.Flags().GetString("url")
 		if backendURL == "" {
-			backendURL = "http://localhost:8080"
+			backendURL = "https://beta-api.pyxcloud.io"
 		}
 
 		if token != "" {
@@ -208,7 +208,7 @@ func loginWithBrowser(cmd *cobra.Command, backendURL string) error {
 	authURL, _ := cmd.Flags().GetString("auth-url")
 	clientID, _ := cmd.Flags().GetString("client-id")
 	if authURL == "" {
-		authURL = "http://localhost:8180/realms/pyx"
+		authURL = "https://beta-auth.pyxcloud.io/realms/pyx"
 	}
 	if clientID == "" {
 		clientID = "pyxcloud-cli"
@@ -397,8 +397,8 @@ func openBrowser(u string) {
 
 func init() {
 	loginCmd.Flags().String("token", "", "JWT or offline token for CI/CD (non-interactive, skips browser)")
-	loginCmd.Flags().String("url", "http://localhost:8080", "PyxCloud API URL")
-	loginCmd.Flags().String("auth-url", "http://localhost:8180/realms/pyx", "Keycloak realm URL")
+	loginCmd.Flags().String("url", "https://beta-api.pyxcloud.io", "PyxCloud API URL")
+	loginCmd.Flags().String("auth-url", "https://beta-auth.pyxcloud.io/realms/pyx", "Keycloak realm URL")
 	loginCmd.Flags().String("client-id", "pyxcloud-cli", "OAuth2 client ID")
 
 	authCmd.AddCommand(loginCmd, logoutCmd)

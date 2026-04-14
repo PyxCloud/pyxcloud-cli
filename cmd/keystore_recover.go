@@ -127,7 +127,7 @@ func stepUpViaKeycloak(client interface{}) (string, error) {
 	authURL := cfg.AuthURL
 	clientID := cfg.ClientID
 	if authURL == "" {
-		authURL = "http://localhost:8180/realms/pyx"
+		authURL = "https://beta-auth.pyxcloud.io/realms/pyx"
 	}
 	if clientID == "" {
 		clientID = "pyxcloud-cli"
@@ -198,7 +198,7 @@ func stepUpViaKeycloak(client interface{}) (string, error) {
 	logv("Requesting step-up token...")
 	apiURL := cfg.APIURL
 	if apiURL == "" {
-		apiURL = "http://localhost:8080"
+		apiURL = "https://beta-api.pyxcloud.io"
 	}
 
 	stepUpBody := map[string]string{

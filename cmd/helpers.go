@@ -24,7 +24,7 @@ func getClient() (*api.Client, error) {
 		cfg.APIURL = apiURL // flag override
 	}
 	if cfg.APIURL == "" {
-		cfg.APIURL = "http://localhost:8080"
+		cfg.APIURL = "https://beta-api.pyxcloud.io"
 	}
 
 	return api.NewClientFromConfig(cfg), nil
