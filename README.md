@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.0-0076d1?style=flat-square" alt="Version 0.3.0" />
+  <img src="https://img.shields.io/badge/version-0.3.1-0076d1?style=flat-square" alt="Version 0.3.1" />
   <img src="https://img.shields.io/badge/license-proprietary-333?style=flat-square" alt="License" />
   <img src="https://img.shields.io/badge/go-1.25-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.25" />
   <img src="https://img.shields.io/badge/platforms-linux%20%7C%20macOS%20%7C%20windows-blue?style=flat-square" alt="Platforms" />
