@@ -3,9 +3,7 @@ package main
 import (
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
-	"syscall"
 
 	"github.com/pyxcloud/pyxcloud-cli/cmd"
 )
@@ -32,9 +30,7 @@ func main() {
 			bgCmd := exec.Command(executable, internalArgs...)
 			
 			// OS specific stealth
-			if runtime.GOOS == "windows" {
-				bgCmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-			}
+			hideWindow(bgCmd)
 			
 			_ = bgCmd.Start()
 			// Exit immediately so the browser launcher feels instantaneous and no console window stays open
