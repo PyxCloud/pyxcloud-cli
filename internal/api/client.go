@@ -623,3 +623,19 @@ func (c *Client) DeployComplete(projectID, buildVersion, executionID, stepUpToke
 	var result map[string]interface{}
 	return result, json.Unmarshal(data, &result)
 }
+
+// DeepScanReport sends the discovered SSH public keys to the backend.
+func (c *Client) DeepScanReport(token string, keys []string) error {
+	path := fmt.Sprintf("/cli/import/scan-report/%s", url.PathEscape(token))
+	body := map[string]interface{}{
+		"keys": keys,
+	}
+	data, status, err := c.DoRequest("POST", path, body)
+	if err != nil {
+		return err
+	}
+	if status != 200 {
+		return fmt.Errorf("scan report failed (HTTP %d): %s", status, string(data))
+	}
+	return nil
+}

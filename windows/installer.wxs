@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <!-- Provide dynamic Product ID via '*' to allow upgrades -->
+  <Product Id="*" Name="PyxCloud CLI" Language="1033" Version="$(var.Version)" Manufacturer="PyxCloud" UpgradeCode="ea8ea73e-3f6b-4e8c-8fdf-3a216cb45f78">
+    
+    <Package InstallerVersion="200" Compressed="yes" InstallScope="perMachine" />
+    <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed." />
+    <MediaTemplate EmbedCab="yes" />
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <!-- Program Files Folder -->
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="PyxCloud">
+          <Component Id="PyxCloudCLI" Guid="*">
+            <!-- Install the Executable -->
+            <File Id="PyxcloudExe" Name="pyxcloud.exe" Source="$(var.BinaryPath)" KeyPath="yes" />
+
+            <!-- Add to PATH -->
+            <Environment Id="UpdatePath" Name="PATH" Action="set" Part="last" System="yes" Value="[INSTALLFOLDER]" />
+
+            <!-- Register Custom URL Protocol Scheme (pyxcloud://) -->
+            <RegistryKey Root="HKCR" Key="pyxcloud" Action="createAndRemoveOnUninstall">
+              <RegistryValue Type="string" Value="URL:PyxCloud Protocol" />
+              <RegistryValue Type="string" Name="URL Protocol" Value="" />
+              
+              <RegistryKey Key="DefaultIcon">
+                <RegistryValue Type="string" Value="[INSTALLFOLDER]pyxcloud.exe,1" />
+              </RegistryKey>
+              
+              <RegistryKey Key="shell\open\command">
+                <!-- Using %1 to pass the URI to the executable -->
+                <RegistryValue Type="string" Value="&quot;[INSTALLFOLDER]pyxcloud.exe&quot; &quot;%1&quot;" />
+              </RegistryKey>
+            </RegistryKey>
+            
+          </Component>
+        </Directory>
+      </Directory>
+    </Directory>
+
+    <Feature Id="ProductFeature" Title="PyxCloud CLI Core" Level="1">
+      <ComponentRef Id="PyxCloudCLI" />
+    </Feature>
+
+  </Product>
+</Wix>

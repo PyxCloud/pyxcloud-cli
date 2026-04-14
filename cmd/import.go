@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"text/tabwriter"
 
@@ -187,6 +188,81 @@ func collectAllResourceIDs(data map[string]interface{}) []string {
 	return ids
 }
 
+var importScanVmsCmd = &cobra.Command{
+	Use:   "scan-vms",
+	Short: "Agentless SSH deep scan of VM authorized_keys",
+	Long: `Connects to the provided IPs using your local SSH command to extract
+Public Keys from the authorized_keys files securely, and pushes them to the PyxCloud Web Console.
+
+Example:
+  pyxcloud import scan-vms --ips 1.2.3.4,5.6.7.8 --user ubuntu --token abc-123`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ipsStr, _ := cmd.Flags().GetString("ips")
+		user, _ := cmd.Flags().GetString("user")
+		token, _ := cmd.Flags().GetString("token")
+
+		if ipsStr == "" || token == "" {
+			return fmt.Errorf("--ips and --token are required")
+		}
+
+		ips := strings.Split(ipsStr, ",")
+		var foundKeys []string
+		keyMap := make(map[string]bool)
+
+		fmt.Printf("Scanning %d Virtual Machine(s) for SSH Keys...\n", len(ips))
+
+		for _, ipRaw := range ips {
+			ip := strings.TrimSpace(ipRaw)
+			if ip == "" {
+				continue
+			}
+			fmt.Printf(" [~] Scanning %s@%s...\n", user, ip)
+
+			sshCmdStr := fmt.Sprintf("cat ~/.ssh/authorized_keys 2>/dev/null || true")
+			out, err := execCmd("ssh", "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes",
+				"-o", "ConnectTimeout=5", fmt.Sprintf("%s@%s", user, ip), sshCmdStr)
+			if err != nil {
+				fmt.Printf(" [!] Warning: Failed to connect or read keys on %s: %v\n", ip, err)
+				continue
+			}
+
+			lines := strings.Split(string(out), "\n")
+			count := 0
+			for _, line := range lines {
+				l := strings.TrimSpace(line)
+				if l != "" && !strings.HasPrefix(l, "#") {
+					if !keyMap[l] {
+						keyMap[l] = true
+						foundKeys = append(foundKeys, l)
+						count++
+					}
+				}
+			}
+			fmt.Printf(" [+] Found %d unique key(s) on %s\n", count, ip)
+		}
+
+		fmt.Printf("Reporting %d unique discovered keys to PyxCloud...\n", len(foundKeys))
+		client, err := getClient()
+		if err != nil {
+			return err
+		}
+
+		err = client.DeepScanReport(token, foundKeys)
+		if err != nil {
+			return fmt.Errorf("failed to report scan results: %w", err)
+		}
+
+		fmt.Println("Scan reported successfully! Please continue in the PyxCloud Web UI.")
+		return nil
+	},
+}
+
+// execCmd runs a local OS command returning combined output
+func execCmd(name string, arg ...string) ([]byte, error) {
+	cmd := exec.Command(name, arg...)
+	return cmd.CombinedOutput()
+}
+
 func init() {
 	importDiscoverCmd.Flags().String("account", "", "Account binding ID to scan (required)")
 	importBuildCmd.Flags().String("account", "", "Account binding ID (required)")
@@ -194,7 +270,12 @@ func init() {
 	importBuildCmd.Flags().String("select", "", "Comma-separated resource IDs to import")
 	importBuildCmd.Flags().Bool("all", false, "Import all discovered resources")
 
+	importScanVmsCmd.Flags().String("ips", "", "Comma-separated IP addresses of the VMs (required)")
+	importScanVmsCmd.Flags().String("user", "ubuntu", "SSH username to connect as")
+	importScanVmsCmd.Flags().String("token", "", "Deep scan capability token from the web console (required)")
+
 	importCmd.AddCommand(importDiscoverCmd)
 	importCmd.AddCommand(importBuildCmd)
+	importCmd.AddCommand(importScanVmsCmd)
 	rootCmd.AddCommand(importCmd)
 }
