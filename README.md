@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.0-0076d1?style=flat-square" alt="Version 0.2.0" />
+  <img src="https://img.shields.io/badge/version-0.3.0-0076d1?style=flat-square" alt="Version 0.3.0" />
   <img src="https://img.shields.io/badge/license-proprietary-333?style=flat-square" alt="License" />
   <img src="https://img.shields.io/badge/go-1.25-00ADD8?style=flat-square&logo=go&logoColor=white" alt="Go 1.25" />
   <img src="https://img.shields.io/badge/platforms-linux%20%7C%20macOS%20%7C%20windows-blue?style=flat-square" alt="Platforms" />
@@ -44,6 +44,10 @@ brew tap pyxcloud/tap
 brew install pyxcloud
 ```
 
+### Windows — MSI Installer (recommended)
+
+Download the `.msi` package from the [Releases page](https://github.com/PyxCloud/pyxcloud-cli/releases/latest) to auto-configure the binary, update your `PATH` and register the `pyxcloud://` Custom URI protocol automatically!
+
 ### Windows — Scoop
 
 ```powershell
@@ -59,7 +63,7 @@ Download the archive for your platform from the [Releases page](https://github.c
 |----------------|------------------|----------|
 | macOS          | x86_64, arm64    | `.tar.gz` |
 | Linux          | x86_64, arm64, i386 | `.tar.gz`, `.deb`, `.rpm`, `.apk` |
-| Windows        | x86_64, arm64, i386 | `.zip`   |
+| Windows        | x86_64, arm64, i386 | `.msi` (Installer), `.zip` |
 
 ### Verify Checksums
 
@@ -246,6 +250,14 @@ pyxcloud import build --account 42 --project 51 --select vm-abc123,vpc-def456
 pyxcloud import build --account 42 --project 51 --all
 ```
 
+#### `import scan-vms` (Agentless Deep Scan)
+
+Perform a zero-trust agentless scan for undocumented SSH keys residing in your compute instances over native SSH. The CLI connects via native OS shell and pushes discovered public payloads to the current web tracking UI.
+
+```bash
+pyxcloud import scan-vms --ips 192.168.1.1,192.168.1.2 --user ubuntu --token abc-123
+```
+
 ---
 
 ### `pyxcloud secrets`
@@ -320,6 +332,8 @@ Available roles: `pyx-admin-role`, `pyx-developer-role`, `pyx-billing-manager-ro
 ### `pyxcloud proxy` — Local Shell Bridge
 
 The proxy command starts a local WebSocket-to-SSH bridge on `127.0.0.1`. The PyxCloud web console connects to this bridge to open **real, interactive SSH sessions** directly in the browser — no browser plugins, no proprietary agents.
+
+> **Note for Windows Users:** If using the recommended **MSI Windows Installer**, PyxCloud exposes a direct `pyxcloud://proxy` URI protocol natively into your operating system. Opening Shells from the Web dashboard spawns the bridge command in stealth background mode without opening stray console windows.
 
 ```bash
 # Default port (13337)
