@@ -639,3 +639,39 @@ func (c *Client) DeepScanReport(token string, keys []string) error {
 	}
 	return nil
 }
+
+// DoRaw sends a request with a RAW (non-JSON-marshalled) body and an explicit
+// Content-Type, going through the same token refresh as DoRequest. Used for
+// endpoints that consume text/plain (e.g. the Pyxfile plan endpoint) or where
+// the caller already has serialized bytes. extraHeaders override defaults.
+func (c *Client) DoRaw(method, path string, body []byte, contentType string, extraHeaders map[string]string) ([]byte, int, error) {
+	if err := c.ensureToken(); err != nil {
+		return nil, 0, fmt.Errorf(errAuthRefreshFmt, err)
+	}
+	var bodyReader io.Reader
+	if body != nil {
+		bodyReader = bytes.NewReader(body)
+	}
+	req, err := http.NewRequest(method, c.BaseURL+path, bodyReader)
+	if err != nil {
+		return nil, 0, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	req.Header.Set("Accept", contentTypeJSON)
+	for k, v := range extraHeaders {
+		req.Header.Set(k, v)
+	}
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return nil, 0, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("read response: %w", err)
+	}
+	return data, resp.StatusCode, nil
+}
