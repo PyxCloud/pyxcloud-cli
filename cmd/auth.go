@@ -273,8 +273,13 @@ func loginWithBrowser(cmd *cobra.Command, backendURL string) error {
 	}()
 
 	fmt.Println("Opening browser for authentication...")
-	logv("If the browser does not open, visit:\n   %s", authorizeURL)
-	openBrowser(authorizeURL)
+	if err := openBrowser(authorizeURL); err != nil {
+		logv("could not open browser automatically: %v", err)
+		fmt.Println("\nCould not open your browser automatically.")
+	}
+	// Always print the authorize URL as a fallback so the user can complete login
+	// by pasting it manually if the browser did not open (notably on Windows).
+	fmt.Printf("If your browser did not open, paste this URL:\n  %s\n\n", authorizeURL)
 
 	var authCode string
 	select {
@@ -380,7 +385,17 @@ func generateState() string {
 	return base64.RawURLEncoding.EncodeToString(b)
 }
 
-func openBrowser(u string) {
+// windowsBrowserArgs builds the argv for launching a URL via cmd.exe on Windows.
+// The empty "" is the mandatory title argument for `start` so a quoted URL is not
+// taken as the window title, and `&` is escaped to `^&` so cmd.exe does not
+// truncate the URL at the first query-string separator.
+func windowsBrowserArgs(u string) []string {
+	return []string{"/c", "start", "", strings.ReplaceAll(u, "&", "^&")}
+}
+
+// openBrowser opens u in the user's default browser. It returns the error from
+// launching the OS helper so callers can fall back to printing the URL.
+func openBrowser(u string) error {
 	var cmd *exec.Cmd
 	switch runtime.GOOS {
 	case "darwin":
@@ -388,11 +403,11 @@ func openBrowser(u string) {
 	case "linux":
 		cmd = exec.Command("xdg-open", u)
 	case "windows":
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
+		cmd = exec.Command("cmd", windowsBrowserArgs(u)...)
+	default:
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
-	if cmd != nil {
-		_ = cmd.Start()
-	}
+	return cmd.Start()
 }
 
 func init() {
