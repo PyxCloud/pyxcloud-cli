@@ -120,14 +120,48 @@ var projectsDeleteCmd = &cobra.Command{
 	},
 }
 
+// projectsStatusCmd projects the board's status view-spec as terminal text — the U8 view-spec
+// projector wired to `pyx projects status`. It reads the SAME structured view-spec the web hub
+// renders, so the CLI shows a coherent view without parsing HTML. It degrades gracefully (falls
+// back to the tool's text/JSON) when the live MCP does not emit a view-spec yet.
+var projectsStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show the board control-room view for a project (view-spec text projection)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		projectID, _ := cmd.Flags().GetString("project")
+		if projectID == "" && len(args) > 0 {
+			projectID = args[0]
+		}
+		if projectID == "" {
+			return fmt.Errorf("--project is required (or pass it as the first argument)")
+		}
+		client, err := boardClient()
+		if err != nil {
+			return err
+		}
+		res, err := client.CallTool("passobuild_board_status", map[string]any{
+			"projectId":    projectID,
+			"editor":       "cli",
+			"widgetFormat": "none",
+		})
+		if err != nil {
+			return fmt.Errorf("project status: %w", err)
+		}
+		renderToolResult(res)
+		return nil
+	},
+}
+
 func init() {
 	projectsCreateCmd.Flags().String("name", "", "Project name (required)")
 	projectsCreateCmd.Flags().String("description", "", "Project description (optional)")
 	projectsDeleteCmd.Flags().String("id", "", "Project ID to delete (required)")
 	projectsDeleteCmd.Flags().Bool("force", false, "Skip confirmation prompt")
+	projectsStatusCmd.Flags().StringP("project", "p", "", "Project ID (required)")
 
 	projectsCmd.AddCommand(projectsListCmd)
 	projectsCmd.AddCommand(projectsCreateCmd)
 	projectsCmd.AddCommand(projectsDeleteCmd)
+	projectsCmd.AddCommand(projectsStatusCmd)
 	rootCmd.AddCommand(projectsCmd)
 }
