@@ -8,7 +8,7 @@ BINARY_NAME=pyxcloud
 LDFLAGS=-s -w
 
 build:
-	go build -ldflags="$(LDFLAGS)" -o $(BINARY_NAME) main.go
+	go build -ldflags="$(LDFLAGS)" -o $(BINARY_NAME) .
 
 release-local:
 	docker run --rm --privileged \
