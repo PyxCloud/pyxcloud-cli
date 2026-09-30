@@ -265,3 +265,37 @@ func TestMonitorCancellationReturnsTypedError(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+func TestExecutePreservesWatchRecordsBeforeFinalTimeoutError(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = io.WriteString(w, `{"data":{"projectId":7,"stage":"board","primaryAction":{"key":"open_board"}}}`)
+	}))
+	defer srv.Close()
+	t.Setenv("PASSO_API_URL", srv.URL)
+	t.Setenv("PASSO_ISSUER_URL", srv.URL)
+	t.Setenv("PASSO_CONSOLE_URL", srv.URL)
+	t.Setenv("PASSO_ACCESS_TOKEN", "watch-token")
+	var out, errOut bytes.Buffer
+	code := Execute(context.Background(), []string{"--project", "7", "--json", "--timeout=30ms", "--poll-interval=1ms", "monitor", "--watch"}, &out, &errOut)
+	if code != 20 {
+		t.Fatalf("exit=%d output=%q", code, out.String())
+	}
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if calls < 1 || len(lines) < 2 {
+		t.Fatalf("calls=%d records=%q", calls, out.String())
+	}
+	for i, line := range lines {
+		var record Result
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("line %d is not JSON: %q (%v)", i, line, err)
+		}
+		if i < len(lines)-1 && record.Status != "observed" {
+			t.Fatalf("record %d is not observed: %#v", i, record)
+		}
+		if i == len(lines)-1 && (record.Code != "deadline_exceeded" || record.Status != "error") {
+			t.Fatalf("missing final timeout record: %#v", record)
+		}
+	}
+}

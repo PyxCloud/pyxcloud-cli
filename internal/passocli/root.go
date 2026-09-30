@@ -116,7 +116,7 @@ func New(opts Options) *cobra.Command {
 		}
 		return r.status(cmd.Context())
 	}})
-	monitor := &cobra.Command{Use: "monitor", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	monitor := &cobra.Command{Use: "monitor", Long: "Read status once by default. With --watch, stream successive status records; with --json these are newline-delimited JSON, followed by a final error record if watching ends due to timeout or cancellation.", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		r, e := runtimeFor(cmd)
 		if e != nil {
 			return e

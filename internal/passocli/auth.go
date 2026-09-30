@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/pyxcloud/pyxcloud-cli/internal/passoauth"
 	"github.com/spf13/cobra"
@@ -58,19 +57,21 @@ func newAuthCommands(factory runtimeFactory) []*cobra.Command {
 
 // Execute runs the CLI command and emits one machine-readable error when JSON was requested.
 func Execute(ctx context.Context, args []string, out, errOut io.Writer) int {
-	var stdout, stderr strings.Builder
-	cmd := New(Options{Out: &stdout, Err: &stderr})
-	cmd.SetArgs(args)
-	err := cmd.ExecuteContext(ctx)
+	return execute(ctx, args, out, errOut, Options{})
+}
+
+func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Options) int {
 	if out == nil {
 		out = os.Stdout
 	}
 	if errOut == nil {
 		errOut = os.Stderr
 	}
+	opts.Out, opts.Err = out, errOut
+	cmd := New(opts)
+	cmd.SetArgs(args)
+	err := cmd.ExecuteContext(ctx)
 	if err == nil {
-		_, _ = io.WriteString(out, stdout.String())
-		_, _ = io.WriteString(errOut, stderr.String())
 		return 0
 	}
 	code := ExitCode(err)
