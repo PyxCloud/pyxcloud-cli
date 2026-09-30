@@ -87,6 +87,7 @@ func newPreexecCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 		operationCommand("assess", "scope", "define:scopeAssessmentStart", true, false, makeRuntime, nil),
 		operationCommand("forecast", "scope", "define:scopeForecast", false, false, makeRuntime, nil),
 		operationCommand("derive", "scope", "define:scopeDerivation", true, false, makeRuntime, nil),
+		newDefineApplyCommand(makeRuntime),
 	)
 	return []*cobra.Command{projects, connect, discover, docs, define}
 }
