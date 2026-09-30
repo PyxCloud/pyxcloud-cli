@@ -70,9 +70,6 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 	if !ok {
 		return empty, &ExitError{20, "unknown_operation"}
 	}
-	if !r.matchesScope(op, params) {
-		return empty, &ExitError{20, "scope_mismatch"}
-	}
 	var bodyObject map[string]json.RawMessage
 	if len(bytes.TrimSpace(input)) > 0 {
 		dec := json.NewDecoder(bytes.NewReader(input))
@@ -86,6 +83,9 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 	}
 	if _, supplied := bodyObject["idempotencyKey"]; supplied {
 		return empty, &ExitError{20, "managed_idempotency_key"}
+	}
+	if !r.matchesScope(op, params, query, bodyObject) {
+		return empty, &ExitError{20, "scope_mismatch"}
 	}
 	fingerprint := map[string]any{"params": params, "query": query, "body": bodyObject}
 	if ifMatch != nil {
@@ -127,7 +127,7 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 			r.Ledger.Operations = map[string]passostate.Operation{}
 		}
 		r.Ledger.Profile, r.Ledger.ProjectID = r.Profile.Name, r.ProjectID
-		r.Ledger.VersionID, r.Ledger.VersionSequence, r.Ledger.ReleaseID, r.Ledger.RunID = r.VersionID, r.VersionSequence, r.ReleaseID, r.RunID
+		r.Ledger.VersionID, r.Ledger.VersionLabel, r.Ledger.VersionSequence, r.Ledger.ReleaseID, r.Ledger.RunID = r.VersionID, r.VersionLabel, r.VersionSequence, r.ReleaseID, r.RunID
 		r.Ledger.Operations[operationKey] = passostate.Operation{Key: key, State: "pending", UpdatedAt: started}
 		if err := passostate.Save(r.LedgerPath, r.Ledger); err != nil {
 			return empty, &ExitError{20, "ledger_write_failed"}
@@ -164,7 +164,7 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 		}
 		return empty, &ExitError{30, "invalid_api_response"}
 	}
-	oldProject, oldVersion, oldSequence, oldRelease, oldRun := r.ProjectID, r.VersionID, r.VersionSequence, r.ReleaseID, r.RunID
+	oldProject, oldVersion, oldVersionLabel, oldSequence, oldRelease, oldRun := r.ProjectID, r.VersionID, r.VersionLabel, r.VersionSequence, r.ReleaseID, r.RunID
 	if err := r.observeIDs(resp.Body, operationKey); err != nil {
 		if mutation {
 			r.Ledger.Operations[operationKey] = passostate.Operation{Key: key, State: "uncertain", UpdatedAt: now()}
@@ -174,7 +174,7 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 	}
 	status := "observed"
 	ledgerState := ""
-	idsChanged := oldProject != r.ProjectID || oldVersion != r.VersionID || oldSequence != r.VersionSequence || oldRelease != r.ReleaseID || oldRun != r.RunID
+	idsChanged := oldProject != r.ProjectID || oldVersion != r.VersionID || oldVersionLabel != r.VersionLabel || oldSequence != r.VersionSequence || oldRelease != r.ReleaseID || oldRun != r.RunID
 	if mutation {
 		status, ledgerState = "accepted", "accepted"
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
@@ -187,7 +187,7 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 			r.Ledger.SchemaVersion = 1
 		}
 		r.Ledger.Profile = r.Profile.Name
-		r.Ledger.VersionID, r.Ledger.VersionSequence, r.Ledger.ReleaseID, r.Ledger.RunID = r.VersionID, r.VersionSequence, r.ReleaseID, r.RunID
+		r.Ledger.VersionID, r.Ledger.VersionLabel, r.Ledger.VersionSequence, r.Ledger.ReleaseID, r.Ledger.RunID = r.VersionID, r.VersionLabel, r.VersionSequence, r.ReleaseID, r.RunID
 		if err := passostate.Save(r.LedgerPath, r.Ledger); err != nil {
 			return empty, &ExitError{20, "ledger_write_failed"}
 		}
@@ -200,10 +200,10 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 	if mutation {
 		resultStatus = "accepted"
 	}
-	return Result{Stage: stage, Status: resultStatus, ProjectID: r.ProjectID, VersionID: r.VersionID, VersionSequence: r.VersionSequence, ReleaseID: r.ReleaseID, RunID: r.RunID, Data: resp.Body, Evidence: evidencePaths(path)}, nil
+	return Result{Stage: stage, Status: resultStatus, ProjectID: r.ProjectID, VersionID: r.VersionID, VersionLabel: r.VersionLabel, VersionSequence: r.VersionSequence, ReleaseID: r.ReleaseID, RunID: r.RunID, Data: resp.Body, Evidence: evidencePaths(path)}, nil
 }
 
-func (r *Runtime) matchesScope(op passocontract.Operation, params map[string]string) bool {
+func (r *Runtime) matchesScope(op passocontract.Operation, params map[string]string, query url.Values, body map[string]json.RawMessage) bool {
 	projectParam := "projectId"
 	if op.Contract == "vibe-docs-boardos" {
 		projectParam = "id"
@@ -216,6 +216,18 @@ func (r *Runtime) matchesScope(op passocontract.Operation, params map[string]str
 	}
 	if op.Contract == "documentation" {
 		if value, ok := params["projectVersionId"]; ok && (r.VersionID == "" || value != r.VersionID) {
+			return false
+		}
+	}
+	if op.Contract == "journeycontract" && op.ID == "releaseBranchesPreview" {
+		versions := query["version"]
+		if !passostate.ValidVersionLabel(r.VersionLabel) || len(versions) != 1 || versions[0] != r.VersionLabel {
+			return false
+		}
+	}
+	if op.Contract == "journeycontract" && op.ID == "releaseBranchesMaterialize" {
+		var version string
+		if json.Unmarshal(body["version"], &version) != nil || !passostate.ValidVersionLabel(r.VersionLabel) || version != r.VersionLabel {
 			return false
 		}
 	}
@@ -269,6 +281,18 @@ func (r *Runtime) observeIDs(raw json.RawMessage, operationKey string) error {
 	}
 	readString := func(k string) string { var v string; _ = json.Unmarshal(obj[k], &v); return v }
 	readInt := func(k string) int64 { var v int64; _ = json.Unmarshal(obj[k], &v); return v }
+	if isVersionLabelSource(operationKey) {
+		label := readString("versionLabel")
+		if label != "" && (!passostate.ValidVersionLabel(label) || !isUUID(readString("versionId"))) {
+			return &ExitError{30, "invalid_version_label"}
+		}
+		if label != "" && readInt("projectId") > 0 && r.ProjectID > 0 && readInt("projectId") != r.ProjectID {
+			return &ExitError{30, "project_id_mismatch"}
+		}
+		if label != "" {
+			r.VersionLabel, r.Ledger.VersionLabel = label, label
+		}
+	}
 	if id := readInt("projectId"); id > 0 {
 		if r.ProjectID > 0 && r.ProjectID != id {
 			return &ExitError{30, "project_id_mismatch"}
@@ -293,4 +317,23 @@ func (r *Runtime) observeIDs(raw json.RawMessage, operationKey string) error {
 		r.RunID, r.Ledger.RunID = v, v
 	}
 	return nil
+}
+
+func isVersionLabelSource(operationKey string) bool {
+	return operationKey == "journeycontract:releaseFreezeCreate" || operationKey == "journeycontract:releaseVersionLockCreate"
+}
+
+func isUUID(value string) bool {
+	if len(value) != 36 || value[8] != '-' || value[13] != '-' || value[18] != '-' || value[23] != '-' {
+		return false
+	}
+	for i, c := range value {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			continue
+		}
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }

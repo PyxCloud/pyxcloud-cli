@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pyxcloud/pyxcloud-cli/internal/passostate"
 	"github.com/spf13/cobra"
 )
 
@@ -33,6 +34,22 @@ func newReleaseCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 		}
 		if needsVersion && strings.TrimSpace(r.VersionID) == "" {
 			return &ExitError{20, "version_required"}
+		}
+		return run(r)
+	}
+	withVersionLabel := func(cmd *cobra.Command, run func(*Runtime) error) error {
+		r, err := makeRuntime(cmd)
+		if err != nil {
+			return err
+		}
+		if r.ProjectID <= 0 {
+			return &ExitError{20, "project_required"}
+		}
+		if r.VersionLabel == "" {
+			return &ExitError{20, "version_label_required"}
+		}
+		if !passostate.ValidVersionLabel(r.VersionLabel) {
+			return &ExitError{20, "invalid_version_label"}
 		}
 		return run(r)
 	}
@@ -103,12 +120,27 @@ func newReleaseCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 		return performRead(cmd, "release", "journeycontract:releaseProposedPinsRead", false, nil)
 	}})
 	branches := &cobra.Command{Use: "branches", Short: "Read or materialize release branches", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		return performRead(cmd, "release", "journeycontract:releaseBranchesPreview", true, func(r *Runtime) url.Values { return url.Values{"version": []string{r.VersionID}} })
+		return withVersionLabel(cmd, func(r *Runtime) error {
+			result, err := r.Perform(cmd.Context(), "release", "journeycontract:releaseBranchesPreview", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10)}, url.Values{"version": []string{r.VersionLabel}}, nil, false)
+			if err != nil {
+				return err
+			}
+			return r.Emit(result)
+		})
 	}}
 	branchCreate := &cobra.Command{Use: "create", Short: "Materialize release branches", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
-		return performMutation(cmd, "release", "journeycontract:releaseBranchesMaterialize", false, false)
+		return withVersionLabel(cmd, func(r *Runtime) error {
+			input, err := json.Marshal(map[string]string{"version": r.VersionLabel})
+			if err != nil {
+				return &ExitError{20, "invalid_input"}
+			}
+			result, err := r.Perform(cmd.Context(), "release", "journeycontract:releaseBranchesMaterialize", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10)}, url.Values{}, input, false)
+			if err != nil {
+				return err
+			}
+			return r.Emit(result)
+		})
 	}}
-	inputFlag(branchCreate)
 	branches.AddCommand(branchCreate)
 	freeze.AddCommand(branches)
 	for _, item := range []struct{ use, op, short string }{

@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/pyxcloud/pyxcloud-cli/internal/passocontract"
+	"github.com/pyxcloud/pyxcloud-cli/internal/passostate"
 	"github.com/spf13/cobra"
 )
 
@@ -78,6 +79,12 @@ func newRunCommand(makeRuntime func(*cobra.Command) (*Runtime, error)) *cobra.Co
 		if err != nil {
 			return err
 		}
+		if r.VersionLabel != "" && !passostate.ValidVersionLabel(r.VersionLabel) {
+			return &ExitError{20, "invalid_version_label"}
+		}
+		if planUsesVersionLabel(plan) && r.VersionLabel == "" {
+			return &ExitError{20, "version_label_required"}
+		}
 		ctx, cancel := context.WithTimeout(cmd.Context(), r.timeout)
 		defer cancel()
 		completed := map[string]bool{}
@@ -89,7 +96,7 @@ func newRunCommand(makeRuntime func(*cobra.Command) (*Runtime, error)) *cobra.Co
 				return runContextError(err)
 			}
 			p := substituteParams(s.Params, r)
-			q := toValues(s.Query)
+			q := substituteValues(s.Query, r)
 			if s.Operation == "seal:deployAuthorize" || s.Operation == "securitygate:confirmRemediationMaterialization" {
 				return emitRunHandoff(cmd, r, s.Stage, completed)
 			}
@@ -98,7 +105,7 @@ func newRunCommand(makeRuntime func(*cobra.Command) (*Runtime, error)) *cobra.Co
 			}
 			if s.Check != nil {
 				cp := substituteParams(s.Check.Params, r)
-				cq := toValues(s.Check.Query)
+				cq := substituteValues(s.Check.Query, r)
 				ok, _, e := checkRun(ctx, r, s.Stage, *s.Check, cp, cq)
 				if e != nil {
 					return runCallError(ctx, e)
@@ -120,7 +127,7 @@ func newRunCommand(makeRuntime func(*cobra.Command) (*Runtime, error)) *cobra.Co
 				if err := ctx.Err(); err != nil {
 					return runContextError(err)
 				}
-				ok, _, e := checkRun(ctx, r, s.Stage, *s.Check, substituteParams(s.Check.Params, r), toValues(s.Check.Query))
+				ok, _, e := checkRun(ctx, r, s.Stage, *s.Check, substituteParams(s.Check.Params, r), substituteValues(s.Check.Query, r))
 				if e != nil {
 					return runCallError(ctx, e)
 				}
@@ -222,6 +229,9 @@ func validateRunPlan(p runPlan) error {
 		if !validParamTemplates(s.Params) {
 			return &ExitError{20, "invalid_plan"}
 		}
+		if !validQueryTemplates(s.Query) {
+			return &ExitError{20, "invalid_plan"}
+		}
 		humanAction := s.Operation == "seal:deployAuthorize" || s.Operation == "securitygate:confirmRemediationMaterialization"
 		if op.Method != "GET" && s.Check == nil && !humanAction {
 			return &ExitError{20, "mutation_check_required"}
@@ -240,6 +250,9 @@ func validateRunPlan(p runPlan) error {
 			if !validParamTemplates(s.Check.Params) {
 				return &ExitError{20, "invalid_check"}
 			}
+			if !validQueryTemplates(s.Check.Query) {
+				return &ExitError{20, "invalid_check"}
+			}
 		}
 	}
 	return nil
@@ -247,11 +260,54 @@ func validateRunPlan(p runPlan) error {
 
 func validParamTemplates(params map[string]string) bool {
 	for _, value := range params {
-		if strings.Contains(value, "${") && value != "${projectId}" && value != "${versionId}" && value != "${versionSequence}" && value != "${releaseId}" && value != "${runId}" {
+		if !validTemplate(value) {
 			return false
 		}
 	}
 	return true
+}
+func validQueryTemplates(query map[string][]string) bool {
+	for _, values := range query {
+		for _, value := range values {
+			if !validTemplate(value) {
+				return false
+			}
+		}
+	}
+	return true
+}
+func validTemplate(value string) bool {
+	return !strings.Contains(value, "${") || value == "${projectId}" || value == "${versionId}" ||
+		value == "${versionSequence}" || value == "${versionLabel}" || value == "${releaseId}" || value == "${runId}"
+}
+func planUsesVersionLabel(plan runPlan) bool {
+	for _, step := range plan.Steps {
+		if paramsUseVersionLabel(step.Params) || queryUsesVersionLabel(step.Query) {
+			return true
+		}
+		if step.Check != nil && (paramsUseVersionLabel(step.Check.Params) || queryUsesVersionLabel(step.Check.Query)) {
+			return true
+		}
+	}
+	return false
+}
+func paramsUseVersionLabel(params map[string]string) bool {
+	for _, value := range params {
+		if value == "${versionLabel}" {
+			return true
+		}
+	}
+	return false
+}
+func queryUsesVersionLabel(query map[string][]string) bool {
+	for _, values := range query {
+		for _, value := range values {
+			if value == "${versionLabel}" {
+				return true
+			}
+		}
+	}
+	return false
 }
 func stageIndex(s string) int {
 	for i, x := range runStages {
@@ -308,13 +364,6 @@ func validJSONObject(b []byte) bool {
 	}
 	return true
 }
-func toValues(m map[string][]string) url.Values {
-	v := url.Values{}
-	for k, x := range m {
-		v[k] = append([]string(nil), x...)
-	}
-	return v
-}
 func substituteParams(src map[string]string, r *Runtime) map[string]string {
 	out := map[string]string{}
 	for k, v := range src {
@@ -323,6 +372,8 @@ func substituteParams(src map[string]string, r *Runtime) map[string]string {
 			v = strconv.FormatInt(r.ProjectID, 10)
 		case "${versionId}":
 			v = r.VersionID
+		case "${versionLabel}":
+			v = r.VersionLabel
 		case "${versionSequence}":
 			if r.VersionSequence > 0 {
 				v = strconv.FormatInt(r.VersionSequence, 10)
@@ -335,6 +386,33 @@ func substituteParams(src map[string]string, r *Runtime) map[string]string {
 			v = r.RunID
 		}
 		out[k] = v
+	}
+	return out
+}
+func substituteValues(src map[string][]string, r *Runtime) url.Values {
+	out := url.Values{}
+	for key, values := range src {
+		for _, value := range values {
+			switch value {
+			case "${projectId}":
+				value = strconv.FormatInt(r.ProjectID, 10)
+			case "${versionId}":
+				value = r.VersionID
+			case "${versionLabel}":
+				value = r.VersionLabel
+			case "${versionSequence}":
+				if r.VersionSequence > 0 {
+					value = strconv.FormatInt(r.VersionSequence, 10)
+				} else {
+					value = ""
+				}
+			case "${releaseId}":
+				value = r.ReleaseID
+			case "${runId}":
+				value = r.RunID
+			}
+			out.Add(key, value)
+		}
 	}
 	return out
 }

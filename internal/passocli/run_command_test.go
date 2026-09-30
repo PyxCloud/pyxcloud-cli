@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -243,6 +244,57 @@ func executeRunPlan(t *testing.T, plan, target string, r *Runtime, out *bytes.Bu
 	cmd.SetErr(&bytes.Buffer{})
 	cmd.SetArgs([]string{"--to", target, "--plan", path})
 	return cmd.ExecuteContext(context.Background())
+}
+
+func TestRunVersionLabelQueryRequiresLabelAndSendsExactLabel(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		calls++
+		if got := req.URL.Query().Get("version"); got != "r1-6387061" {
+			t.Errorf("version query=%q, want exact release label", got)
+		}
+		_, _ = io.WriteString(w, `{"data":{"branches":[]}}`)
+	}))
+	defer srv.Close()
+	r, out := testRunRuntime(t, srv.URL, time.Second)
+	plan := `{"schemaVersion":1,"steps":[{"stage":"freeze","operation":"journeycontract:releaseBranchesPreview","params":{"projectId":"${projectId}"},"query":{"version":["${versionLabel}"]}}]}`
+	err := executeRunPlan(t, plan, "freeze", r, out)
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != "version_label_required" || calls != 0 {
+		t.Fatalf("missing label err=%v calls=%d", err, calls)
+	}
+	r.VersionLabel = "r1-6387061"
+	if err := executeRunPlan(t, plan, "freeze", r, out); err != nil || calls != 1 {
+		t.Fatalf("label substitution err=%v calls=%d", err, calls)
+	}
+}
+
+func TestRunRejectsUnsafeVersionLabelTemplateBeforeRequest(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer srv.Close()
+	r, out := testRunRuntime(t, srv.URL, time.Second)
+	r.VersionLabel = "../main"
+	plan := `{"schemaVersion":1,"steps":[{"stage":"freeze","operation":"journeycontract:releaseBranchesPreview","params":{"projectId":"${projectId}"},"query":{"version":["${versionLabel}"]}}]}`
+	err := executeRunPlan(t, plan, "freeze", r, out)
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != "invalid_version_label" || calls != 0 {
+		t.Fatalf("err=%v calls=%d; unsafe version label must be refused before request", err, calls)
+	}
+}
+
+func TestRunRejectsLiteralBranchLabelOutsideRuntimeScope(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer srv.Close()
+	r, out := testRunRuntime(t, srv.URL, time.Second)
+	r.VersionLabel = "r1-6387061"
+	plan := `{"schemaVersion":1,"steps":[{"stage":"freeze","operation":"journeycontract:releaseBranchesPreview","params":{"projectId":"${projectId}"},"query":{"version":["r2-6387061"]}}]}`
+	err := executeRunPlan(t, plan, "freeze", r, out)
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != "scope_mismatch" || calls != 0 {
+		t.Fatalf("err=%v calls=%d; a literal query cannot switch the frozen label", err, calls)
+	}
 }
 
 func TestRunDoesNotTrustLedgerWhenBackendCheckIsFalse(t *testing.T) {

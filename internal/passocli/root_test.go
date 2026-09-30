@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -86,6 +87,50 @@ func TestRuntimeRejectsLedgerScopeMismatchBeforeRequest(t *testing.T) {
 	cmd.SetArgs([]string{"--profile", "sandbox", "--project", "42", "--ledger", path, "status"})
 	if err := cmd.ExecuteContext(context.Background()); err == nil || !strings.Contains(err.Error(), "scope_mismatch") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestRuntimeRejectsConflictingVersionLabelAndLedgerBeforeRequest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ledger.json")
+	if err := osWriteFile(path, []byte(`{"schemaVersion":1,"profile":"sandbox","projectId":42,"versionLabel":"r1-6387061"}`)); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	cmd := New(Options{Out: &out, Err: &errOut, Store: &memoryStore{}})
+	cmd.SetArgs([]string{"--profile", "sandbox", "--project", "42", "--version-label", "r2-6387061", "--ledger", path, "freeze", "branches"})
+	err := cmd.ExecuteContext(context.Background())
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != "scope_mismatch" || out.Len() != 0 {
+		t.Fatalf("err=%v output=%q; explicit label conflicting with ledger must refuse before HTTP", err, out.String())
+	}
+}
+
+func TestVersionLabelFlagScopesBranchPreview(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/projects/42/contract/release-scope-lock-branches" || r.URL.Query().Get("version") != "r1-6387061" {
+			t.Errorf("request = %s?%s", r.URL.Path, r.URL.RawQuery)
+		}
+		_, _ = io.WriteString(w, `{"data":{"branches":[]}}`)
+	}))
+	defer srv.Close()
+	t.Setenv("PASSO_API_URL", srv.URL)
+	t.Setenv("PASSO_ISSUER_URL", srv.URL)
+	t.Setenv("PASSO_CONSOLE_URL", srv.URL)
+	store := &memoryStore{token: passoauth.Token{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}}
+	var out, errOut bytes.Buffer
+	cmd := New(Options{Out: &out, Err: &errOut, Store: store})
+	cmd.SetArgs([]string{"--project", "42", "--version-label", "r1-6387061", "--json", "freeze", "branches"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var result Result
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil || result.VersionLabel != "r1-6387061" {
+		t.Fatalf("result=%s err=%v", out.String(), err)
+	}
+	if calls != 1 {
+		t.Fatalf("requests=%d, want 1", calls)
 	}
 }
 

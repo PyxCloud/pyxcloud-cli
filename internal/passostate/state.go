@@ -10,8 +10,27 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 )
+
+var versionLabelChars = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/-]*$`)
+
+// ValidVersionLabel reports whether a version label is safe as one Git ref.
+func ValidVersionLabel(label string) bool {
+	if len(label) == 0 || len(label) > 255 || !versionLabelChars.MatchString(label) ||
+		strings.Contains(label, "..") || strings.Contains(label, "@{") || strings.Contains(label, "//") ||
+		strings.HasSuffix(label, ".") || strings.HasSuffix(label, "/") || strings.HasSuffix(label, ".lock") {
+		return false
+	}
+	for _, component := range strings.Split(label, "/") {
+		if component == "" || strings.HasPrefix(component, ".") || strings.HasSuffix(component, ".lock") {
+			return false
+		}
+	}
+	return true
+}
 
 // Ledger stores durable state for a project workflow.
 type Ledger struct {
@@ -19,6 +38,7 @@ type Ledger struct {
 	Profile         string               `json:"profile"`
 	ProjectID       int64                `json:"projectId"`
 	VersionID       string               `json:"versionId"`
+	VersionLabel    string               `json:"versionLabel,omitempty"`
 	VersionSequence int64                `json:"versionSequence,omitempty"`
 	ReleaseID       string               `json:"releaseId"`
 	RunID           string               `json:"runId"`
@@ -75,6 +95,9 @@ func Load(path string) (Ledger, error) {
 	if ledger.VersionSequence < 0 {
 		return Ledger{}, errors.New("invalid ledger version sequence")
 	}
+	if ledger.VersionLabel != "" && !ValidVersionLabel(ledger.VersionLabel) {
+		return Ledger{}, errors.New("invalid ledger version label")
+	}
 	if ledger.Operations == nil {
 		ledger.Operations = make(map[string]Operation)
 	}
@@ -91,6 +114,9 @@ func Save(path string, ledger Ledger) error {
 	}
 	if ledger.VersionSequence < 0 {
 		return errors.New("invalid ledger version sequence")
+	}
+	if ledger.VersionLabel != "" && !ValidVersionLabel(ledger.VersionLabel) {
+		return errors.New("invalid ledger version label")
 	}
 	if ledger.Operations == nil {
 		ledger.Operations = make(map[string]Operation)
