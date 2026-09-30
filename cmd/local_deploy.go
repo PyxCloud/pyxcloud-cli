@@ -171,7 +171,7 @@ func RunLocalDeploy(cmd *cobra.Command, projectID, buildVersion string) error {
 	fmt.Println("\nTo commit your infrastructure state to PyxCloud, step-up authentication is required.")
 	// Generate JWT context internally (bypass performStepUpWebflow logic inside client methods, just prompt UI)
 	fmt.Println("Completing deployment...")
-	
+
 	stepUpToken, err := stepUpViaKeycloak(client)
 	if err != nil {
 		return fmt.Errorf("failed to retrieve step-up token: %w", err)
@@ -202,4 +202,3 @@ func validateLocalSecrets(required []string) error {
 	}
 	return nil
 }
-
