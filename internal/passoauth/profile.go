@@ -23,7 +23,7 @@ func ResolveProfile(name string) (Profile, error) {
 	switch name {
 	case "sandbox":
 		p.APIURL = "http://127.0.0.1:16080"
-		p.IssuerURL = "http://127.0.0.1:18081/realms/passobuild"
+		p.IssuerURL = "http://sso.localtest.me:18081/realms/passobuild"
 		p.ConsoleURL = "http://127.0.0.1:13000"
 	case "staging":
 	default:
@@ -63,13 +63,13 @@ func ValidateProfile(p Profile) error {
 		if err != nil || u.Scheme == "" || u.Hostname() == "" {
 			return fmt.Errorf("invalid %s URL", label)
 		}
-		if u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+		if u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || strings.Contains(raw, "#") {
 			return fmt.Errorf("invalid %s URL", label)
 		}
 		if u.Scheme != "http" && u.Scheme != "https" {
 			return fmt.Errorf("invalid %s URL scheme", label)
 		}
-		if u.Scheme == "http" && !isLoopbackHost(u.Hostname()) {
+		if u.Scheme == "http" && !isLoopbackHost(u.Hostname()) && !(p.Name == "sandbox" && strings.EqualFold(u.Hostname(), "sso.localtest.me")) {
 			return fmt.Errorf("HTTP %s URL must use a loopback host", label)
 		}
 	}

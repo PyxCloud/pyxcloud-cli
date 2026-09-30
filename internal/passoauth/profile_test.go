@@ -10,7 +10,7 @@ func TestResolveProfileSandboxDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Profile{Name: "sandbox", APIURL: "http://127.0.0.1:16080", IssuerURL: "http://127.0.0.1:18081/realms/passobuild", ClientID: "passo-cli", ConsoleURL: "http://127.0.0.1:13000"}
+	want := Profile{Name: "sandbox", APIURL: "http://127.0.0.1:16080", IssuerURL: "http://sso.localtest.me:18081/realms/passobuild", ClientID: "passo-cli", ConsoleURL: "http://127.0.0.1:13000"}
 	if got != want {
 		t.Fatalf("got %#v, want %#v", got, want)
 	}
@@ -46,6 +46,8 @@ func TestValidateProfileRejectsUnsafeURLs(t *testing.T) {
 		{"userinfo", "api", "https://user:pass@example.test"},
 		{"query", "api", "https://example.test?x=1"},
 		{"fragment", "issuer", "https://example.test#frag"},
+		{"empty-query", "api", "https://example.test?"},
+		{"empty-fragment", "issuer", "https://example.test#"},
 		{"scheme", "console", "ftp://example.test"},
 		{"remote-http", "api", "http://api.example.test"},
 	}
@@ -78,5 +80,21 @@ func clearProfileEnv(t *testing.T) {
 	t.Helper()
 	for _, key := range []string{"PASSO_API_URL", "PASSO_ISSUER_URL", "PASSO_CONSOLE_URL", "PASSO_CLIENT_ID"} {
 		t.Setenv(key, "")
+	}
+}
+
+func TestValidateProfileAllowsOnlySandboxSSOHTTPHost(t *testing.T) {
+	p := Profile{Name: "sandbox", APIURL: "http://sso.localtest.me:18081", IssuerURL: "http://sso.localtest.me:18081/realms/passobuild", ClientID: "passo-cli", ConsoleURL: "http://127.0.0.1:13000"}
+	if err := ValidateProfile(p); err != nil {
+		t.Fatalf("sandbox SSO hostname should be allowed: %v", err)
+	}
+	p.APIURL = "http://other.localtest.me:18081"
+	if err := ValidateProfile(p); err == nil {
+		t.Fatal("expected non-exact localtest.me host to fail")
+	}
+	p.Name = "staging"
+	p.APIURL = "http://sso.localtest.me:18081"
+	if err := ValidateProfile(p); err == nil {
+		t.Fatal("staging must reject sandbox SSO HTTP exception")
 	}
 }
