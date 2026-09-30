@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -34,6 +35,9 @@ func TestProjectsGetUsesMountedDetailRoute(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet || r.URL.Path != "/vibe/projects/42" {
 			t.Errorf("request %s %s", r.Method, r.URL.Path)
+		}
+		if r.ContentLength != 0 || r.Header.Get("Content-Type") != "" {
+			t.Errorf("GET unexpectedly carried a body: length=%d content-type=%q", r.ContentLength, r.Header.Get("Content-Type"))
 		}
 		_, _ = io.WriteString(w, `{"id":42,"name":"demo"}`)
 	}))
@@ -121,6 +125,9 @@ func TestScopeDerivationReportsMissingCompilation(t *testing.T) {
 		if r.Method != http.MethodPost || r.URL.Path != "/vibe/projects/42/scope/derivation" {
 			t.Errorf("request %s %s", r.Method, r.URL.Path)
 		}
+		if r.ContentLength != 0 || r.Header.Get("Content-Type") != "" {
+			t.Errorf("derivation unexpectedly carried a body: length=%d content-type=%q", r.ContentLength, r.Header.Get("Content-Type"))
+		}
 		w.WriteHeader(http.StatusConflict)
 		_, _ = io.WriteString(w, `{"error":"no_compiled_documentation"}`)
 	}))
@@ -143,5 +150,85 @@ func TestProjectMutationRequiresBoundedInput(t *testing.T) {
 	}
 	if calls != 0 {
 		t.Fatalf("invalid input reached API: %d calls", calls)
+	}
+}
+
+func TestGetCommandRejectsInputBeforeHTTP(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ }))
+	defer srv.Close()
+	input := t.TempDir() + "/input.json"
+	if err := os.WriteFile(input, []byte(`{"x":1}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	root := preexecRoot(t, srv, 42)
+	root.SetArgs([]string{"projects", "get", "--input", input})
+	if err := root.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("GET must reject --input")
+	}
+	if calls != 0 {
+		t.Fatalf("invalid GET input reached API: %d calls", calls)
+	}
+}
+
+func TestScopeDeriveRejectsInputBeforeHTTP(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ }))
+	defer srv.Close()
+	input := t.TempDir() + "/input.json"
+	if err := os.WriteFile(input, []byte(`{"x":1}`), 0600); err != nil {
+		t.Fatal(err)
+	}
+	root := preexecRoot(t, srv, 42)
+	root.SetArgs([]string{"define", "derive", "--input", input})
+	if err := root.ExecuteContext(context.Background()); err == nil {
+		t.Fatal("bodyless derivation must reject --input")
+	}
+	if calls != 0 {
+		t.Fatalf("invalid derivation input reached API: %d calls", calls)
+	}
+}
+
+func TestDocumentationGenerateHonorsOptionalRunID(t *testing.T) {
+	const runID = "123e4567-e89b-12d3-a456-426614174000"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/vibe/projects/42/documentation/generate" {
+			t.Errorf("request %s %s", r.Method, r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatal(err)
+		}
+		if body["runId"] != runID {
+			t.Errorf("body %#v", body)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"status":{"state":"generating"}}`)
+	}))
+	defer srv.Close()
+	root := preexecRoot(t, srv, 42)
+	root.SetIn(strings.NewReader(`{"runId":"` + runID + `"}`))
+	root.SetArgs([]string{"docs", "generate", "--input", "-"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestDiscoverStartSendsNoBody(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/vibe/projects/42/define-analysis" {
+			t.Errorf("request %s %s", r.Method, r.URL.Path)
+		}
+		if r.ContentLength != 0 || r.Header.Get("Content-Type") != "" {
+			t.Errorf("unexpected body: length=%d content-type=%q", r.ContentLength, r.Header.Get("Content-Type"))
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"projectId":42,"status":"queued"}`)
+	}))
+	defer srv.Close()
+	root := preexecRoot(t, srv, 42)
+	root.SetArgs([]string{"discover", "start"})
+	if err := root.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
 	}
 }

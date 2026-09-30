@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/pyxcloud/pyxcloud-cli/internal/passocontract"
 	"github.com/spf13/cobra"
 )
 
@@ -15,9 +16,9 @@ import (
 // so mutations retain the normal ledger and evidence behavior.
 func newPreexecCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*cobra.Command {
 	projects := &cobra.Command{Use: "projects", Args: cobra.NoArgs}
-	projects.AddCommand(operationCommand("list", "projects", "projects:projectList", false, false, false, makeRuntime, nil))
-	projects.AddCommand(operationCommand("create", "projects", "projects:projectCreate", false, true, false, makeRuntime, nil))
-	projects.AddCommand(operationCommand("get", "projects", "projects:projectRead", true, false, false, makeRuntime, nil))
+	projects.AddCommand(operationCommand("list", "projects", "projects:projectList", false, false, makeRuntime, nil))
+	projects.AddCommand(operationCommand("create", "projects", "projects:projectCreate", false, false, makeRuntime, nil))
+	projects.AddCommand(operationCommand("get", "projects", "projects:projectRead", true, false, makeRuntime, nil))
 
 	connect := &cobra.Command{Use: "connect", Args: cobra.NoArgs}
 	start := &cobra.Command{Use: "start", Args: cobra.NoArgs}
@@ -45,7 +46,7 @@ func newPreexecCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 	connect.AddCommand(start, newConnectAttachCommand(makeRuntime))
 
 	discover := &cobra.Command{Use: "discover", Args: cobra.NoArgs}
-	read := operationCommand("read", "discovery", "define:defineAnalysisRead", true, false, false, makeRuntime, func(cmd *cobra.Command) (url.Values, error) {
+	read := operationCommand("read", "discovery", "define:defineAnalysisRead", true, false, makeRuntime, func(cmd *cobra.Command) (url.Values, error) {
 		wait, _ := cmd.Flags().GetInt("wait")
 		if wait < 0 || wait > 20 {
 			return nil, &ExitError{20, "invalid_input"}
@@ -60,52 +61,80 @@ func newPreexecCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 	discover.RunE = read.RunE
 	discover.Flags().Int("wait", 0, "wait seconds (0 to 20)")
 	discover.AddCommand(read,
-		operationCommand("start", "discovery", "define:defineAnalysisStart", true, false, false, makeRuntime, nil),
-		operationCommand("approve", "discovery", "define:defineAnalysisApprove", true, true, false, makeRuntime, nil),
-		operationCommand("cancel", "discovery", "define:defineAnalysisCancel", true, true, false, makeRuntime, nil),
-		operationCommand("retry", "discovery", "define:defineAnalysisRetry", true, true, false, makeRuntime, nil),
-		operationCommand("confirm", "discovery", "define:defineAnalysisConfirm", true, true, false, makeRuntime, nil),
-		operationCommand("skip", "discovery", "define:defineAnalysisSkip", true, true, false, makeRuntime, nil),
-		operationCommand("decisions", "discovery", "define:defineAnalysisSaveDecisions", true, true, false, makeRuntime, nil),
-		operationCommand("opinions", "discovery", "define:defineAnalysisSaveOpinions", true, true, false, makeRuntime, nil),
+		operationCommand("start", "discovery", "define:defineAnalysisStart", true, false, makeRuntime, nil),
+		operationCommand("approve", "discovery", "define:defineAnalysisApprove", true, false, makeRuntime, nil),
+		operationCommand("cancel", "discovery", "define:defineAnalysisCancel", true, false, makeRuntime, nil),
+		operationCommand("retry", "discovery", "define:defineAnalysisRetry", true, false, makeRuntime, nil),
+		operationCommand("confirm", "discovery", "define:defineAnalysisConfirm", true, false, makeRuntime, nil),
+		operationCommand("skip", "discovery", "define:defineAnalysisSkip", true, false, makeRuntime, nil),
+		operationCommand("decisions", "discovery", "define:defineAnalysisSaveDecisions", true, false, makeRuntime, nil),
+		operationCommand("opinions", "discovery", "define:defineAnalysisSaveOpinions", true, false, makeRuntime, nil),
 	)
 
 	docs := &cobra.Command{Use: "docs", Args: cobra.NoArgs}
-	docsRead := operationCommand("read", "documentation", "define:documentationRead", true, false, false, makeRuntime, nil)
+	docsRead := operationCommand("read", "documentation", "define:documentationRead", true, false, makeRuntime, nil)
 	docs.RunE = docsRead.RunE
 	docs.AddCommand(docsRead,
-		operationCommand("generate", "documentation", "define:documentationGenerate", true, false, false, makeRuntime, nil),
-		operationCommand("compilations", "documentation", "vibe-docs-boardos:listDocumentCompilations", true, false, false, makeRuntime, nil),
-		operationCommand("compile", "documentation", "vibe-docs-boardos:compileDocumentation", true, true, true, makeRuntime, nil),
+		operationCommand("generate", "documentation", "define:documentationGenerate", true, false, makeRuntime, nil),
+		operationCommand("compilations", "documentation", "vibe-docs-boardos:listDocumentCompilations", true, false, makeRuntime, nil),
+		operationCommand("compile", "documentation", "vibe-docs-boardos:compileDocumentation", true, true, makeRuntime, nil),
 	)
 
 	define := &cobra.Command{Use: "define", Args: cobra.NoArgs}
-	assessmentRead := operationCommand("assessment-read", "scope", "define:scopeAssessmentRead", true, false, false, makeRuntime, nil)
+	assessmentRead := operationCommand("assessment-read", "scope", "define:scopeAssessmentRead", true, false, makeRuntime, nil)
 	define.RunE = assessmentRead.RunE
 	define.AddCommand(assessmentRead,
-		operationCommand("assess", "scope", "define:scopeAssessmentStart", true, true, false, makeRuntime, nil),
-		operationCommand("forecast", "scope", "define:scopeForecast", false, true, false, makeRuntime, nil),
-		operationCommand("derive", "scope", "define:scopeDerivation", true, false, false, makeRuntime, nil),
+		operationCommand("assess", "scope", "define:scopeAssessmentStart", true, false, makeRuntime, nil),
+		operationCommand("forecast", "scope", "define:scopeForecast", false, false, makeRuntime, nil),
+		operationCommand("derive", "scope", "define:scopeDerivation", true, false, makeRuntime, nil),
 	)
 	return []*cobra.Command{projects, connect, discover, docs, define}
 }
 
+// operationInputSupport follows the generated HTTP method and explicit route exceptions.
+// GET operations and documented bodyless POSTs never expose --input; the single
+// optional-body POST remains available while every other generated body command requires it.
+func operationInputSupport(operation string) (hasInput, required bool) {
+	op, ok := passocontract.Operations[operation]
+	if !ok {
+		return false, false
+	}
+	if strings.EqualFold(op.Method, "GET") {
+		return false, false
+	}
+	switch operation {
+	case "define:defineAnalysisStart", "define:scopeDerivation":
+		return false, false
+	case "define:documentationGenerate":
+		return true, false
+	default:
+		return true, true
+	}
+}
+
 // operationCommand creates a single catalog-backed command. A path-project
 // operation always requires the selected project from the root --project flag.
-func operationCommand(use, stage, operation string, projectRequired, inputRequired, bodyIdempotency bool, makeRuntime func(*cobra.Command) (*Runtime, error), query func(*cobra.Command) (url.Values, error)) *cobra.Command {
+func operationCommand(use, stage, operation string, projectRequired, bodyIdempotency bool, makeRuntime func(*cobra.Command) (*Runtime, error), query func(*cobra.Command) (url.Values, error)) *cobra.Command {
 	cmd := &cobra.Command{Use: use, Args: cobra.NoArgs}
-	cmd.Flags().String("input", "", "JSON input file or - for stdin")
-	if inputRequired {
-		_ = cmd.MarkFlagRequired("input")
+	hasInput, inputRequired := operationInputSupport(operation)
+	if hasInput {
+		cmd.Flags().String("input", "", "JSON input file or - for stdin")
+		if inputRequired {
+			_ = cmd.MarkFlagRequired("input")
+		}
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		inputPath, _ := cmd.Flags().GetString("input")
-		input, err := ReadInput(inputPath, cmd.InOrStdin())
-		if err != nil {
-			return err
-		}
-		if inputRequired && len(input) == 0 {
-			return &ExitError{20, "invalid_input"}
+		var input json.RawMessage
+		var err error
+		if hasInput {
+			inputPath, _ := cmd.Flags().GetString("input")
+			input, err = ReadInput(inputPath, cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			if inputRequired && len(input) == 0 {
+				return &ExitError{20, "invalid_input"}
+			}
 		}
 		r, err := makeRuntime(cmd)
 		if err != nil {
