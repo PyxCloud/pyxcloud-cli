@@ -92,8 +92,8 @@ func newPreexecCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 }
 
 // operationInputSupport follows the generated HTTP method and explicit route exceptions.
-// GET operations and documented bodyless POSTs never expose --input; the single
-// optional-body POST remains available while every other generated body command requires it.
+// GET operations and documented bodyless POSTs never expose --input; optional-body
+// POSTs expose it without requiring it, while all other generated body commands require it.
 func operationInputSupport(operation string) (hasInput, required bool) {
 	op, ok := passocontract.Operations[operation]
 	if !ok {
@@ -105,7 +105,7 @@ func operationInputSupport(operation string) (hasInput, required bool) {
 	switch operation {
 	case "define:defineAnalysisStart", "define:scopeDerivation":
 		return false, false
-	case "define:documentationGenerate":
+	case "define:documentationGenerate", "define:defineAnalysisRetry", "define:defineAnalysisCancel", "define:defineAnalysisSkip":
 		return true, false
 	default:
 		return true, true

@@ -232,3 +232,58 @@ func TestDiscoverStartSendsNoBody(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDiscoveryControlOperationsAcceptOptionalBodies(t *testing.T) {
+	const runID = "123e4567-e89b-12d3-a456-426614174000"
+	tests := []struct {
+		name, command, path, inputKey, inputValue string
+	}{
+		{"retry", "retry", "/vibe/projects/42/define-analysis/retry", "runId", runID},
+		{"cancel", "cancel", "/vibe/projects/42/define-analysis/cancel", "reason", "owner requested"},
+		{"skip", "skip", "/vibe/projects/42/define-analysis/skip", "reason", "not needed"},
+	}
+	for _, tt := range tests {
+		for _, withInput := range []bool{false, true} {
+			name := "omitted"
+			if withInput {
+				name = "provided"
+			}
+			t.Run(tt.name+"/"+name, func(t *testing.T) {
+				srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					if r.Method != http.MethodPost || r.URL.Path != tt.path {
+						t.Errorf("request %s %s", r.Method, r.URL.Path)
+					}
+					if !withInput {
+						if r.ContentLength != 0 || r.Header.Get("Content-Type") != "" {
+							t.Errorf("omitted optional body was sent: length=%d content-type=%q", r.ContentLength, r.Header.Get("Content-Type"))
+						}
+					} else {
+						var body map[string]string
+						if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+							t.Errorf("decode optional body: %v", err)
+						}
+						if body[tt.inputKey] != tt.inputValue {
+							t.Errorf("body=%#v, expected %s=%q", body, tt.inputKey, tt.inputValue)
+						}
+					}
+					w.WriteHeader(http.StatusOK)
+					_, _ = io.WriteString(w, `{"projectId":42,"status":"ok"}`)
+				}))
+				defer srv.Close()
+				root := preexecRoot(t, srv, 42)
+				args := []string{"discover", tt.command}
+				if withInput {
+					path := t.TempDir() + "/input.json"
+					if err := os.WriteFile(path, []byte(`{"`+tt.inputKey+`":"`+tt.inputValue+`"}`), 0600); err != nil {
+						t.Fatal(err)
+					}
+					args = append(args, "--input", path)
+				}
+				root.SetArgs(args)
+				if err := root.ExecuteContext(context.Background()); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	}
+}
