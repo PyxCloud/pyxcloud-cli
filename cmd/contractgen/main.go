@@ -69,6 +69,19 @@ func run(check bool) error {
 		if err = json.Unmarshal(b, &d); err != nil {
 			return fmt.Errorf("%s: %w", file, err)
 		}
+		var pathItems struct {
+			Paths map[string]struct {
+				Parameters []json.RawMessage `json:"parameters"`
+			} `json:"paths"`
+		}
+		if err = json.Unmarshal(b, &pathItems); err != nil {
+			return fmt.Errorf("%s: %w", file, err)
+		}
+		for path, item := range pathItems.Paths {
+			if len(item.Parameters) > 0 {
+				return fmt.Errorf("%s: path-level parameters at %s are unsupported; declare them on each operation", file, path)
+			}
+		}
 		stem := strings.TrimSuffix(filepath.Base(file), ".openapi.json")
 		if stem == "journey" {
 			journey = d.Components.Schemas

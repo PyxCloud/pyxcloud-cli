@@ -10,8 +10,18 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--backend", type=pathlib.Path)
+    parser = argparse.ArgumentParser(
+        description=(
+            "Verify contract snapshot hashes. The lock's commit records provenance; "
+            "--backend checks contract contents and does not require that checkout's "
+            "HEAD to equal the recorded commit."
+        )
+    )
+    parser.add_argument(
+        "--backend",
+        type=pathlib.Path,
+        help="backend checkout root or its contracts directory (checks top-level *.openapi.json)",
+    )
     args = parser.parse_args()
     lock = json.loads((ROOT / "contracts/backend.lock.json").read_text())
     expected = lock["files"]
@@ -26,7 +36,12 @@ def main() -> int:
             errors.append(f"snapshot hash mismatch: {name}")
     if args.backend:
         backend = args.backend.resolve()
-        found = {p.name: p for p in backend.rglob("*.openapi.json") if ".git" not in p.parts}
+        contracts_dir = backend if backend.name == "contracts" else backend / "contracts"
+        if not contracts_dir.is_dir():
+            errors.append(f"backend contracts directory not found: {contracts_dir}")
+            found = {}
+        else:
+            found = {p.name: p for p in contracts_dir.glob("*.openapi.json") if p.is_file()}
         for name in sorted(set(found) - set(expected)):
             errors.append(f"new backend OpenAPI file: {name}")
         for name in sorted(set(expected) - set(found)):
