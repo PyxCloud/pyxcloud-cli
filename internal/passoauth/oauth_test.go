@@ -2,6 +2,8 @@ package passoauth
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -74,6 +76,53 @@ func TestBeginDeviceAndRefresh(t *testing.T) {
 	tok, err := o.Refresh(context.Background(), "secret")
 	if err != nil || tok.AccessToken != "new" || tok.RefreshToken != "secret" {
 		t.Fatalf("token=%+v err=%v", tok, err)
+	}
+}
+
+func TestDevicePKCEChallengeBoundToEachStart(t *testing.T) {
+	challenges := map[string]string{}
+	starts := 0
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/protocol/openid-connect/auth/device":
+			_ = r.ParseForm()
+			if r.Form.Get("code_challenge_method") != "S256" || r.Form.Get("code_challenge") == "" {
+				t.Errorf("missing device PKCE parameters")
+			}
+			starts++
+			deviceCode := fmt.Sprintf("device-%d", starts)
+			challenges[deviceCode] = r.Form.Get("code_challenge")
+			_ = json.NewEncoder(w).Encode(map[string]any{"device_code": deviceCode, "user_code": "user", "verification_uri": "https://verify.test", "expires_in": 30})
+		case "/protocol/openid-connect/token":
+			_ = r.ParseForm()
+			verifier := r.Form.Get("code_verifier")
+			hash := sha256.Sum256([]byte(verifier))
+			gotChallenge := base64.RawURLEncoding.EncodeToString(hash[:])
+			if verifier == "" || gotChallenge != challenges[r.Form.Get("device_code")] {
+				t.Errorf("device PKCE verifier did not match its challenge")
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{"access_token": "access", "expires_in": 30})
+		default:
+			t.Errorf("unexpected path %s", r.URL.Path)
+		}
+	}))
+	defer s.Close()
+	o := testOAuth(s)
+	auth1, err := o.BeginDevice(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth2, err := o.BeginDevice(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if auth1.verifier == "" || auth2.verifier == "" || auth1.verifier == auth2.verifier {
+		t.Fatal("device starts did not receive distinct private verifiers")
+	}
+	for _, auth := range []DeviceAuthorization{auth1, auth2} {
+		if _, err := o.CompleteDevice(context.Background(), auth); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

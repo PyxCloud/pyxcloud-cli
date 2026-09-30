@@ -33,6 +33,7 @@ type DeviceAuthorization struct {
 	VerificationURIComplete string
 	ExpiresIn               int
 	Interval                int
+	verifier                string
 }
 
 func (o *OAuth) client() *http.Client {
@@ -64,7 +65,13 @@ func (o *OAuth) BeginDevice(ctx context.Context) (DeviceAuthorization, error) {
 	if err != nil {
 		return DeviceAuthorization{}, err
 	}
-	values := url.Values{"client_id": {o.Profile.ClientID}, "scope": {"openid profile offline_access"}}
+	verifier, err := randomURL(32)
+	if err != nil {
+		return DeviceAuthorization{}, errors.New("could not initialize device authorization")
+	}
+	hash := sha256.Sum256([]byte(verifier))
+	challenge := base64.RawURLEncoding.EncodeToString(hash[:])
+	values := url.Values{"client_id": {o.Profile.ClientID}, "scope": {"openid profile offline_access"}, "code_challenge": {challenge}, "code_challenge_method": {"S256"}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(values.Encode()))
 	if err != nil {
 		return DeviceAuthorization{}, errors.New("could not create device authorization request")
@@ -89,7 +96,7 @@ func (o *OAuth) BeginDevice(ctx context.Context) (DeviceAuthorization, error) {
 	if err := decodeLimited(resp.Body, &raw); err != nil || raw.DeviceCode == "" || raw.UserCode == "" || raw.VerificationURI == "" || raw.ExpiresIn <= 0 {
 		return DeviceAuthorization{}, errors.New("invalid device authorization response")
 	}
-	return DeviceAuthorization{raw.DeviceCode, raw.UserCode, raw.VerificationURI, raw.VerificationURIComplete, raw.ExpiresIn, raw.Interval}, nil
+	return DeviceAuthorization{DeviceCode: raw.DeviceCode, UserCode: raw.UserCode, VerificationURI: raw.VerificationURI, VerificationURIComplete: raw.VerificationURIComplete, ExpiresIn: raw.ExpiresIn, Interval: raw.Interval, verifier: verifier}, nil
 }
 
 func (o *OAuth) CompleteDevice(ctx context.Context, auth DeviceAuthorization) (Token, error) {
@@ -121,7 +128,7 @@ func (o *OAuth) CompleteDevice(ctx context.Context, auth DeviceAuthorization) (T
 		if err := ctx.Err(); err != nil {
 			return Token{}, err
 		}
-		values := url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "client_id": {o.Profile.ClientID}, "device_code": {auth.DeviceCode}}
+		values := url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "client_id": {o.Profile.ClientID}, "device_code": {auth.DeviceCode}, "code_verifier": {auth.verifier}}
 		token, status, code, err := o.tokenRequest(ctx, endpoint, values)
 		if err == nil {
 			return token, nil
