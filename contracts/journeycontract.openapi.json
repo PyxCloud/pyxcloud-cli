@@ -1,0 +1,412 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Journey contract CLI contract",
+    "version": "1.0.0",
+    "description": "DB-conditional REST routes from journeycontract.Handler. Routes are mounted only when the handler is registered with a database; request bodies mirror concrete DTOs."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/projects/{projectId}/contract": {
+      "get": {
+        "operationId": "releaseEligibilityRead",
+        "summary": "Read release eligibility",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/proposed-pins": {
+      "get": {
+        "operationId": "releaseProposedPinsRead",
+        "summary": "Read proposed release pins",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/freeze-preview": {
+      "get": {
+        "operationId": "releaseFreezePreviewRead",
+        "summary": "Preview a release freeze",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/spec-revision": {
+      "post": {
+        "operationId": "releaseSpecRevisionMirror",
+        "summary": "Mirror published spec revision",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/version-lock": {
+      "post": {
+        "operationId": "releaseVersionLockCreate",
+        "summary": "Create release version lock",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/release-freeze": {
+      "post": {
+        "operationId": "releaseFreezeCreate",
+        "summary": "Freeze a release",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer"
+                  },
+                  "releaseChannel": {
+                    "type": "string"
+                  },
+                  "repositoryPins": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "repository": {
+                          "type": "string"
+                        },
+                        "commit": {
+                          "type": "string"
+                        },
+                        "ref": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "hostingPin": {
+                    "type": "object",
+                    "properties": {
+                      "kind": {
+                        "type": "string",
+                        "const": "hosting"
+                      },
+                      "provider": {
+                        "type": "string",
+                        "enum": [
+                          "github-pages"
+                        ]
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "ref": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "provider"
+                    ]
+                  }
+                },
+                "required": [
+                  "expectedVersion"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/release-scope-lock-branches": {
+      "get": {
+        "operationId": "releaseBranchesPreview",
+        "summary": "Preview release branches",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "releaseBranchesMaterialize",
+        "summary": "Materialize release branches",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "version": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "version"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/deployments": {
+      "post": {
+        "operationId": "managedDeploymentCreate",
+        "summary": "Create managed deployment",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "expectedVersion": {
+                    "type": "integer"
+                  },
+                  "releaseId": {
+                    "type": "string"
+                  },
+                  "environmentId": {
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedVersion",
+                  "releaseId",
+                  "environmentId",
+                  "idempotencyKey"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/deployments/{runId}": {
+      "get": {
+        "operationId": "managedDeploymentRead",
+        "summary": "Read managed deployment",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/contract/deployments/{runId}/terminate": {
+      "post": {
+        "operationId": "managedDeploymentTerminate",
+        "summary": "Terminate managed deployment",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "environmentId": {
+                    "type": "string"
+                  },
+                  "expectedVersion": {
+                    "type": "integer"
+                  },
+                  "confirmation": {
+                    "type": "string",
+                    "const": "TERMINATE"
+                  },
+                  "idempotencyKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedVersion",
+                  "confirmation",
+                  "idempotencyKey"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "runId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {}
+  }
+}

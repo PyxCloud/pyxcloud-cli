@@ -1,0 +1,85 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GitHub connect CLI contract",
+    "version": "1.0.0",
+    "description": "Derived from mounted POST /vibe/github/connect/start. No public bind route is mounted; installation binding is server-side."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/vibe/github/connect/start": {
+      "post": {
+        "operationId": "githubConnectStart",
+        "summary": "Start a GitHub connection",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          },
+          "400": {
+            "description": "invalid_body"
+          },
+          "422": {
+            "description": "invalid purpose or installation"
+          },
+          "429": {
+            "description": "github_connect_rate_limited"
+          },
+          "503": {
+            "description": "GitHub App or store unavailable"
+          }
+        },
+        "description": "Response is {url, expiresAt}; purpose and installation constraints are validated by the handler. The raw state is returned only in the generated URL.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "projectId": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "enum": [
+                      "install",
+                      "link",
+                      "add_repos"
+                    ]
+                  },
+                  "installationId": {
+                    "oneOf": [
+                      {
+                        "type": "integer"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "purpose"
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {}
+  }
+}
