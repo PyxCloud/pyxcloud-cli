@@ -109,6 +109,7 @@ func New(opts Options) *cobra.Command {
 		return buildRuntime(cmd, Options{Out: opts.Out, Err: opts.Err, Store: opts.Store, HTTPClient: opts.HTTPClient, Now: opts.Now}, profile, project, version, release, runID, environment, expected, ledgerPath, evidenceDir, asJSON, poll, timeout)
 	}
 	root.AddCommand(newAuthCommands(runtimeFor)...)
+	root.AddCommand(newDesignCommands(runtimeFor)...)
 	root.AddCommand(&cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		r, e := runtimeFor(cmd)
 		if e != nil {
