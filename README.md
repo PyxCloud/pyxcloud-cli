@@ -413,6 +413,30 @@ A typical GitHub Actions workflow:
 
 ---
 
+## API Contracts (development)
+
+The typed API clients in `internal/api/gen/<contract>` are generated with
+[oapi-codegen](https://github.com/oapi-codegen/oapi-codegen) (version pinned in
+`go.mod` via `tools.go`) from the pyx-backend OpenAPI contracts vendored in
+`api/contracts/`. The pinned pyx-backend commit is recorded in
+`api/contracts/SOURCE`.
+
+```bash
+# Re-vendor at the pinned SHA and regenerate (read access to pyx-backend needed:
+# PYX_BACKEND_TOKEN, GH_TOKEN, GITHUB_TOKEN or `gh auth login`)
+make sync-contracts generate
+
+# Bump the pin to another ref, then regenerate and commit
+scripts/sync-contracts.sh --ref main && make generate
+```
+
+`.github/workflows/contracts-drift.yml` fails when the vendored contracts or
+generated code differ from the pinned SHA, and reports (without failing) drift
+against pyx-backend `main`. Contracts that cannot be generated are listed, with
+the reason, in `internal/api/gen/doc.go`.
+
+---
+
 ## License
 
 Copyright © 2026 CumulusCorp Inc. All Rights Reserved.

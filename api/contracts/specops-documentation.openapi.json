@@ -1,0 +1,326 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "passo.build SpecOps generated documentation API",
+    "description": "The generated prose documentation (implementation discovery) surface: read the book plus its status, and trigger generation manually (the same cycle the ingest-time auto trigger runs, implementationdiscovery/documentation_service.go:25). Routes: go/internal/resource/vibe/routes.go:536-537; handlers: go/internal/resource/vibe/discovery_routes.go:128-281; wire DTOs: go/internal/implementationdiscovery/types.go (DocumentationBook, DocumentationStatus).",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/vibe/projects/{projectId}/documentation": {
+      "get": {
+        "operationId": "getProjectDocumentation",
+        "summary": "Read the generated documentation book with its generation status",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentationRead"
+                }
+              }
+            },
+            "description": "{documentation: null} when no book has succeeded yet, with documentation_status carrying why (routes.go:533-536, discovery_routes.go:128-160)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "failed to load the documentation"
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/documentation/generate": {
+      "post": {
+        "operationId": "generateProjectDocumentation",
+        "summary": "Trigger documentation generation (submission-asynchronous: 202 with the attempt id and the status read to follow)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "description": "optional: {\"runId\": \"<uuid>\"} pins the attempt to THAT origin run (the honest retry); an EMPTY body keeps the legacy latest-succeeded-run start (discovery_routes.go:180-183). Unknown fields are 400 before any work",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "runId": {
+                    "type": "string",
+                    "format": "uuid"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentationGenerateAccepted"
+                }
+              }
+            },
+            "description": "the attempt row exists; attempt_id and run_id are the row's ACTUAL identity (discovery_routes.go:268-276)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "invalid_request_body / invalid_run_id: a malformed request never starts a generation"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "the requested origin run does not exist for this organisation/project"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "not-possible/conflict refusals, including origin_run_not_runnable and the typed conflict reason in detail"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "the generation refused with a typed DocumentationError outside the conflict class"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": ["error", "message"]
+      },
+      "DocumentationChapter": {
+        "description": "one prose (markdown) chapter (types.go:669-723)",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "section": {
+            "description": "functional (per-capability, product-facing) or technical (architecture-facing) (types.go:664-672)",
+            "type": "string",
+            "enum": ["functional", "technical"]
+          },
+          "title": {
+            "type": "string"
+          },
+          "content": {
+            "description": "markdown prose",
+            "type": "string"
+          }
+        },
+        "required": ["id", "section", "title", "content"]
+      },
+      "DocumentationBook": {
+        "description": "the generated documentation book (types.go:770-828). The secondary sub-objects (BookSummary, IdentityAssessment, DocumentationQualityFinding, MissingChapter, the docgraph GraphEnvelope) are typed in the same package; clients read the chapters list as the primary content",
+        "type": "object",
+        "properties": {
+          "documentationId": {
+            "description": "the immutable generation attempt row this book was decoded from",
+            "type": "string"
+          },
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "reportId": {
+            "type": "string"
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DocumentationChapter"
+            }
+          },
+          "missingChapters": {
+            "description": "chapters dropped after per-chapter validation retries — factual absence report, never fabricated content",
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "modelId": {
+            "type": "string"
+          },
+          "promptVersion": {
+            "type": "string"
+          },
+          "generatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "metadataVersion": {
+            "description": "book_metadata envelope version: 1 since the flow contract, 0/absent = legacy UNKNOWN",
+            "type": "integer"
+          }
+        },
+        "required": ["projectId", "organisationId", "runId", "chapters", "modelId", "promptVersion", "generatedAt"]
+      },
+      "DocumentationStatus": {
+        "description": "DocumentationStatus (go/internal/implementationdiscovery/types.go:871-896) — note its wire keys are snake_case exactly as tagged here",
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string"
+          },
+          "attempt_id": {
+            "type": "string"
+          },
+          "failure_code": {
+            "type": "string"
+          },
+          "failure_message": {
+            "type": "string"
+          },
+          "attempt_at": {
+            "type": "string"
+          },
+          "book_run_id": {
+            "type": "string"
+          },
+          "latest_succeeded_run_id": {
+            "type": "string"
+          },
+          "attempt_run_id": {
+            "description": "the ORIGIN run of the actual latest attempt, not merely the latest succeeded run",
+            "type": "string"
+          },
+          "subphase": {
+            "type": "string"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "staleReason": {
+            "description": "when stale: the named cause (book belongs to an older run than the latest succeeded run)",
+            "type": "string"
+          }
+        },
+        "required": ["state", "stale"]
+      },
+      "DocumentationRead": {
+        "description": "the 200 body of GET documentation (discovery_routes.go:158): documentation is null until a book succeeds",
+        "type": "object",
+        "properties": {
+          "documentation": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DocumentationBook"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "documentation_status": {
+            "$ref": "#/components/schemas/DocumentationStatus"
+          }
+        },
+        "required": ["documentation", "documentation_status"]
+      },
+      "DocumentationGenerateAccepted": {
+        "description": "the 202 body of the generate trigger (discovery_routes.go:268-276)",
+        "type": "object",
+        "properties": {
+          "attempt_id": {
+            "type": "string"
+          },
+          "run_id": {
+            "type": "string"
+          },
+          "status": {
+            "description": "the status read the UI follows (discovery_routes.go:270-275)",
+            "type": "object",
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": ["generating"]
+              },
+              "read": {
+                "type": "string"
+              },
+              "window": {
+                "description": "the generation ceiling (GenerationDeadline), Go duration string",
+                "type": "string"
+              }
+            },
+            "required": ["state", "read", "window"]
+          }
+        },
+        "required": ["attempt_id", "run_id", "status"]
+      }
+    }
+  }
+}

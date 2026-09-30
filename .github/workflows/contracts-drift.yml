@@ -1,0 +1,126 @@
+name: contracts-drift
+
+# Checks that the vendored pyx-backend OpenAPI contracts (api/contracts) and
+# the clients generated from them (internal/api/gen) are reproducible.
+#
+# - pinned (blocking): re-sync at the SHA recorded in api/contracts/SOURCE,
+#   regenerate, and fail on any diff, including new untracked files.
+# - upstream-main (non-blocking): sync from pyx-backend main, regenerate and
+#   report the drift in the job summary. It never fails the run.
+#
+# pyx-backend is private: both jobs need the repository secret
+# PYX_BACKEND_CONTRACTS_TOKEN (fine-grained token, Contents: read-only on
+# PyxCloud/pyx-backend). Without it the pinned job fails closed.
+
+on:
+  # Local-devops mode (same as ci.yml): automatic GitHub Actions triggers are
+  # disabled. Dispatch manually, or run the same steps locally:
+  #   scripts/sync-contracts.sh && go generate ./internal/api/gen/... && git add -N . && git diff HEAD --exit-code
+  workflow_dispatch:
+permissions:
+  contents: read
+
+jobs:
+  pinned:
+    name: drift at pinned SHA (blocking)
+    runs-on:
+      - self-hosted
+      - pyxflow
+      - linux-x64
+    env:
+      PYX_BACKEND_TOKEN: ${{ secrets.PYX_BACKEND_CONTRACTS_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Sync contracts at the pinned SHA
+        run: |
+          if [ -z "$PYX_BACKEND_TOKEN" ]; then
+            echo "::error::secret PYX_BACKEND_CONTRACTS_TOKEN is not set (read access to PyxCloud/pyx-backend)"
+            exit 1
+          fi
+          scripts/sync-contracts.sh
+
+      - name: Regenerate clients
+        run: go generate ./internal/api/gen/...
+
+      - name: Contract/package consistency
+        run: go test ./internal/api/gen/
+
+      - name: Fail on drift
+        run: |
+          git add --intent-to-add .
+          if ! git diff HEAD --exit-code --stat; then
+            echo "::error::vendored contracts or generated clients differ from the pinned SHA; run scripts/sync-contracts.sh && go generate ./internal/api/gen/... and commit"
+            git diff HEAD | head -n 400 || true
+            exit 1
+          fi
+
+  upstream-main:
+    name: drift against pyx-backend main (report only)
+    runs-on:
+      - self-hosted
+      - pyxflow
+      - linux-x64
+    # Report-only: a failure here (e.g. main ships a contract oapi-codegen
+    # cannot load) must never fail the build.
+    continue-on-error: true
+    env:
+      PYX_BACKEND_TOKEN: ${{ secrets.PYX_BACKEND_CONTRACTS_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          check-latest: true
+
+      - name: Sync contracts from main
+        id: sync
+        continue-on-error: true
+        run: scripts/sync-contracts.sh --ref main
+
+      - name: Regenerate clients
+        id: generate
+        if: steps.sync.outcome == 'success'
+        continue-on-error: true
+        run: go generate ./internal/api/gen/...
+
+      - name: Build and consistency against main
+        id: check
+        if: steps.generate.outcome == 'success'
+        continue-on-error: true
+        run: |
+          go build ./...
+          go test ./internal/api/gen/
+
+      - name: Report drift
+        if: always()
+        run: |
+          {
+            echo "## Contract drift vs pyx-backend main"
+            echo
+            echo "- pinned: \`$(git show HEAD:api/contracts/SOURCE | sed -n 's/^sha=//p')\`"
+            echo "- main: \`$(sed -n 's/^sha=//p' api/contracts/SOURCE)\`"
+            echo "- sync: ${{ steps.sync.outcome }}, generate: ${{ steps.generate.outcome }}, build+consistency: ${{ steps.check.outcome }}"
+            echo
+          } >> "$GITHUB_STEP_SUMMARY"
+          git add --intent-to-add .
+          if git diff HEAD --quiet -- . ':(exclude)api/contracts/SOURCE'; then
+            echo "No drift: main matches the pinned contracts." >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '```'
+              git diff HEAD --stat -- . ':(exclude)api/contracts/SOURCE'
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::pyx-backend main has drifted from the pinned contracts; bump with scripts/sync-contracts.sh --ref main && go generate ./internal/api/gen/..."
+          fi

@@ -1,0 +1,888 @@
+{
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "error": {
+            "description": "stable typed error code (SECGATE-*)",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BoardEpic": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "description": "boardoscontract.EpicStatus — derived, not restated",
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "BoardTask": {
+        "properties": {
+          "blockedReason": {
+            "type": "string"
+          },
+          "epicId": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "repoScope": {
+            "description": "always present: every remediation task is repository-scoped",
+            "type": "string"
+          },
+          "status": {
+            "description": "boardoscontract.TaskStatus — derived, not restated",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ConfirmMaterializationCommand": {
+        "description": "the closed confirmation shape: only the frozen preview id, tenant scoping and an idempotency key. No selection, no verdict, no free-text task content.",
+        "properties": {
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "previewId": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "CostEstimate": {
+        "properties": {
+          "basis": {
+            "description": "the statistical/pricing source of the projection",
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ],
+            "type": "string"
+          },
+          "maxTokens": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "maxUsd": {
+            "type": "number"
+          },
+          "minTokens": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "minUsd": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "FindingLocation": {
+        "properties": {
+          "line": {
+            "type": "integer"
+          },
+          "path": {
+            "description": "repo-relative; never an absolute host path",
+            "type": "string"
+          },
+          "repoUrl": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FindingRef": {
+        "properties": {
+          "blockReason": {
+            "description": "secfindings.BlockReason — present only when blocking is true",
+            "type": "string"
+          },
+          "blocking": {
+            "description": "backend policy fact: required, cannot be deselected",
+            "type": "boolean"
+          },
+          "class": {
+            "description": "secfindings.Class — derived, not restated",
+            "type": "string"
+          },
+          "displayCode": {
+            "description": "the four-code colour this finding renders as; distinct from blocking",
+            "enum": [
+              "CRITICAL",
+              "DANGER",
+              "WARNING",
+              "CODE_SMELL"
+            ],
+            "type": "string"
+          },
+          "findingId": {
+            "type": "string"
+          },
+          "optional": {
+            "description": "must always equal !blocking; the browser may submit only ids of findings with optional=true",
+            "type": "boolean"
+          },
+          "repoUrl": {
+            "type": "string"
+          },
+          "severity": {
+            "description": "secfindings.Severity — derived, not restated; empty means pre-triage",
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FindingTechnicalDetail": {
+        "description": "the closed, structurally redacted technical-evidence shape: no raw scanner payload field and no secret field exists — redaction is structural, not a best-effort scrub.",
+        "properties": {
+          "class": {
+            "description": "secfindings.Class — derived, not restated",
+            "type": "string"
+          },
+          "displayCode": {
+            "enum": [
+              "CRITICAL",
+              "DANGER",
+              "WARNING",
+              "CODE_SMELL"
+            ],
+            "type": "string"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "evaluationRevision": {
+            "description": "pins the GateEvaluation.revision the evidence was produced from",
+            "format": "int64",
+            "type": "integer"
+          },
+          "findingId": {
+            "type": "string"
+          },
+          "location": {
+            "$ref": "#/components/schemas/FindingLocation"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "redacted": {
+            "description": "always true: this surface serves only the redacted projection",
+            "type": "boolean"
+          },
+          "redactedSummary": {
+            "description": "plain-language technical explanation; no secret, credential, token or raw scanner payload",
+            "type": "string"
+          },
+          "ruleId": {
+            "description": "detection rule name; never raw rule output",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "FourCodeSummary": {
+        "properties": {
+          "codeSmell": {
+            "type": "integer"
+          },
+          "critical": {
+            "type": "integer"
+          },
+          "danger": {
+            "type": "integer"
+          },
+          "warning": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "GateAdvisory": {
+        "properties": {
+          "kind": {
+            "description": "e.g. public_repository",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "subject": {
+            "description": "what the fact is about, e.g. owner/name",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GateDecisionGap": {
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "scanner",
+              "consent",
+              "authorization",
+              "not_implemented",
+              "not_applicable"
+            ],
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "tool": {
+            "type": "string"
+          },
+          "toolVersion": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GateEvaluation": {
+        "properties": {
+          "advisories": {
+            "description": "recorded facts that are never a check and never change the verdict (WP-19.4, e.g. a public repository)",
+            "items": {
+              "$ref": "#/components/schemas/GateAdvisory"
+            },
+            "type": "array"
+          },
+          "decisionVerdict": {
+            "description": "the three-value C3 decision verdict the producer stores (WP-08.4)",
+            "enum": [
+              "GO",
+              "GO_WITH_NOTES",
+              "NO_GO"
+            ],
+            "type": "string"
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/CostEstimate"
+          },
+          "evaluatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/FindingRef"
+            },
+            "type": "array"
+          },
+          "fourCode": {
+            "$ref": "#/components/schemas/FourCodeSummary"
+          },
+          "gaps": {
+            "description": "what did not run or was not covered, by kind; a scanner gap forces NO_GO (WP-08.4)",
+            "items": {
+              "$ref": "#/components/schemas/GateDecisionGap"
+            },
+            "type": "array"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "primaryAction": {
+            "description": "the one primary action; NO_GO has no bypass action",
+            "enum": [
+              "PROCEED_TO_ARCHITECTURE",
+              "START_REMEDIATION"
+            ],
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "readiness": {
+            "description": "non-excusable readiness items decided from the scan (WP-19.3) and GitHub (WP-19.4); a FIX row forces NO_GO, a NOTE row requires a note",
+            "items": {
+              "$ref": "#/components/schemas/GateReadiness"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sourceScanRunId": {
+            "description": "securityscancontract.Run.RunId this evaluation was produced from",
+            "type": "string"
+          },
+          "sourceScanRunState": {
+            "description": "securityscancontract.RunState; must be COMPLETED",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "RETRYING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "summary": {
+            "description": "one truthful plain-language sentence",
+            "type": "string"
+          },
+          "verdict": {
+            "description": "backend-derived; the browser never computes this",
+            "enum": [
+              "GO",
+              "NO_GO"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GateEvent": {
+        "properties": {
+          "evaluationId": {
+            "type": "string"
+          },
+          "name": {
+            "enum": [
+              "securitygate.evaluation.completed",
+              "securitygate.preview.generated",
+              "securitygate.remediation.confirmed",
+              "securitygate.remediation.materialized",
+              "securitygate.remediation.integration.completed",
+              "securitygate.rescan.triggered",
+              "securitygate.finalverdict.issued"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sequence": {
+            "description": "strictly increasing per (projectId, projectVersionId); staleness is detected by sequence regression, never by wall clock",
+            "format": "int64",
+            "type": "integer"
+          },
+          "verdict": {
+            "enum": [
+              "GO",
+              "NO_GO"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GateReadiness": {
+        "properties": {
+          "bucket": {
+            "description": "secreadiness.Decide for the strict target: fail → FIX, unknown → NOTE, pass → ADVISORY",
+            "enum": [
+              "FIX",
+              "NOTE",
+              "ADVISORY"
+            ],
+            "type": "string"
+          },
+          "evidence": {
+            "description": "what decided the result; for unknown, why the item was not checked",
+            "type": "string"
+          },
+          "item": {
+            "description": "secreadiness registry id, e.g. 5.4",
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "noteRequired": {
+            "description": "S4: the item was not checked, so the owner must write a note",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "pass",
+              "fail",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "subGate": {
+            "enum": [
+              "security",
+              "release_readiness"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MaterializationResult": {
+        "properties": {
+          "epic": {
+            "$ref": "#/components/schemas/BoardEpic"
+          },
+          "materializedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "previewId": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "tasks": {
+            "items": {
+              "$ref": "#/components/schemas/BoardTask"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "RemediationPreview": {
+        "properties": {
+          "estimate": {
+            "$ref": "#/components/schemas/CostEstimate"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "evaluationRevision": {
+            "description": "pins the GateEvaluation.revision this preview was frozen from; staleness is detected by mismatch, never by wall clock",
+            "format": "int64",
+            "type": "integer"
+          },
+          "generatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "previewId": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "repositoryWorkItems": {
+            "items": {
+              "$ref": "#/components/schemas/RepositoryWorkItem"
+            },
+            "type": "array"
+          },
+          "requiredFindingIds": {
+            "description": "every blocking finding on the evaluation; always included",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "selectedOptionalFindingIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "RepositoryWorkItem": {
+        "properties": {
+          "findingIds": {
+            "description": "deduplicated finding ids grouped under this repository",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "repoUrl": {
+            "type": "string"
+          },
+          "taskTitle": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SelectOptionalFindingsCommand": {
+        "description": "the closed browser command shape: optional finding ids only. No verdict, no required/blocking id, no four-code, no cost field — an unknown key is refused.",
+        "properties": {
+          "evaluationId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "selectedOptionalFindingIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "REST face of the Security Gate aggregate (epic #1353). The page is intentionally sparse: one backend-derived GO/NO_GO verdict, one plain-language sentence, four colour-coded rows (CRITICAL/DANGER/WARNING/CODE_SMELL), token/USD estimates and one primary action. Display code and blocking are distinct backend facts; the browser may submit only optional finding ids, never a verdict, a required-finding id, the four-code classification or a cost total. GO with no selection proceeds to Architecture; NO_GO has no bypass — there is no manual approval, proceed-with-findings, risk acceptance, free-text task or project-termination path on this surface.",
+    "title": "passo.build security gate API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/vibe/projects/{projectId}/versions/{versionId}/security/gate": {
+      "get": {
+        "operationId": "getSecurityGateEvaluation",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "the project version whose completed scan run this evaluation was produced from",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GateEvaluation"
+                  }
+                }
+              },
+              "description": "the served evaluation"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "no evaluation exists yet / project or version not found / foreign tenant"
+            }
+          }
+        },
+        "summary": "The backend-derived GO/NO_GO evaluation: verdict, summary, four-code rows, findings, cost estimate and primary action"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/security/gate/confirm": {
+      "post": {
+        "operationId": "confirmRemediationMaterialization",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "the project version whose completed scan run this evaluation was produced from",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmMaterializationCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MaterializationResult"
+                  }
+                }
+              },
+              "description": "epic and tasks materialized"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "preview not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "preview is stale; regenerate it"
+            }
+          }
+        },
+        "summary": "Confirm a frozen preview: atomically materializes one BoardOS epic and its repository-scoped tasks; never changes the verdict"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/security/gate/findings/{findingId}/detail": {
+      "get": {
+        "operationId": "getSecurityGateFindingDetail",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "the project version whose completed scan run this evaluation was produced from",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "the finding whose redacted technical evidence is read; must exist on the currently served evaluation",
+            "in": "path",
+            "name": "findingId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/FindingTechnicalDetail"
+                  }
+                }
+              },
+              "description": "the redacted technical evidence"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "no evaluation, unknown finding, or foreign tenant — indistinguishable on purpose"
+            }
+          }
+        },
+        "summary": "One finding's REDACTED technical evidence (separately authorized drawer); fails closed across organisation/project/version boundaries"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/security/gate/preview": {
+      "post": {
+        "operationId": "requestRemediationPreview",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "the project version whose completed scan run this evaluation was produced from",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectOptionalFindingsCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RemediationPreview"
+                  }
+                }
+              },
+              "description": "the frozen preview"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "evaluation not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "a submitted id is not an optional finding on this evaluation"
+            }
+          }
+        },
+        "summary": "Request a frozen preview from the caller's optional finding selection; required findings are always included by the backend"
+      }
+    }
+  }
+}

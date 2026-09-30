@@ -1,0 +1,956 @@
+{
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "error": {
+            "description": "stable typed error code (REGIONCMP-*)",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "Blocker": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requiredAction": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "requiredAction"
+        ],
+        "type": "object"
+      },
+      "BreakdownLine": {
+        "properties": {
+          "amountHighMinor": {
+            "description": "monthly infrastructure, high end; equals low for a point price",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "amountLowMinor": {
+            "description": "monthly infrastructure, low end, minor units, rounded once from micros",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "kind": {
+            "description": "archcatalog kind of the component; the sku family must fit it",
+            "type": "string"
+          },
+          "qty": {
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "sku": {
+            "description": "pricecatalog SKU key, e.g. vm.1c2g, storage.block.100gb-month",
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/PriceSource"
+          },
+          "unit": {
+            "enum": [
+              "month",
+              "hour",
+              "100gb-month",
+              "100gb"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "sku",
+          "qty",
+          "unit",
+          "amountLowMinor",
+          "amountHighMinor",
+          "source"
+        ],
+        "type": "object"
+      },
+      "Capability": {
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "allowed"
+        ],
+        "type": "object"
+      },
+      "CompareRow": {
+        "properties": {
+          "breakdown": {
+            "description": "always an array",
+            "items": {
+              "$ref": "#/components/schemas/BreakdownLine"
+            },
+            "type": "array"
+          },
+          "deployable": {
+            "description": "true only on digitalocean in V1; false = estimate only",
+            "type": "boolean"
+          },
+          "monthly": {
+            "$ref": "#/components/schemas/MonthlyPrice",
+            "description": "absent when nothing on the row is priced; never a zero placeholder"
+          },
+          "notPriced": {
+            "description": "always an array; a SKU is never both priced and not priced, and an entry without a SKU names a kind no line prices",
+            "items": {
+              "$ref": "#/components/schemas/NotPriced"
+            },
+            "type": "array"
+          },
+          "partial": {
+            "description": "true exactly when notPriced is non-empty",
+            "type": "boolean"
+          },
+          "provider": {
+            "description": "V1 provider id; literal, never resolved or defaulted",
+            "enum": [
+              "digitalocean",
+              "aws",
+              "azure"
+            ],
+            "type": "string"
+          },
+          "providerRegion": {
+            "description": "the provider's own code for the region leaf, e.g. nyc3",
+            "enum": [
+              "nyc3",
+              "us-east-1",
+              "eastus",
+              "fra1",
+              "eu-central-1",
+              "germanywestcentral",
+              "sgp1",
+              "ap-southeast-1",
+              "southeastasia"
+            ],
+            "type": "string"
+          },
+          "region": {
+            "description": "provider-neutral V1 region leaf",
+            "enum": [
+              "us-east",
+              "eu-frankfurt",
+              "ap-singapore"
+            ],
+            "type": "string"
+          },
+          "regionName": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "region",
+          "regionName",
+          "providerRegion",
+          "deployable",
+          "partial",
+          "notPriced",
+          "breakdown"
+        ],
+        "type": "object"
+      },
+      "CompareView": {
+        "properties": {
+          "contractVersion": {
+            "const": "2.0.0",
+            "description": "v2 stamp; a body without it is not a v2 body",
+            "type": "string"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "feeRateBps": {
+            "description": "Passo's fee rate in basis points (1000 = 10%), pinned by the evaluation",
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "previous": {
+            "$ref": "#/components/schemas/PreviousSelection",
+            "description": "the previous version's choice, pre-selected with fresh prices; absent when none"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/CompareRow"
+            },
+            "maxItems": 24,
+            "minItems": 1,
+            "type": "array"
+          },
+          "sizeMatching": {
+            "description": "the rule sizes were matched by (spec §7.2): RAM first, then vCPU, within shared/burstable families",
+            "enum": [
+              "ram_then_vcpu_shared"
+            ],
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/SnapshotRef"
+          }
+        },
+        "required": [
+          "contractVersion",
+          "evaluationId",
+          "snapshot",
+          "feeRateBps",
+          "sizeMatching",
+          "rows"
+        ],
+        "type": "object"
+      },
+      "CompareViewEnvelope": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "type": "array"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "data": {
+            "$ref": "#/components/schemas/CompareView"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/Freshness"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "capabilities",
+          "blockers",
+          "freshness",
+          "version"
+        ],
+        "type": "object"
+      },
+      "EvaluationAccepted": {
+        "properties": {
+          "evaluationId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "evaluationId"
+        ],
+        "type": "object"
+      },
+      "EvaluationAcceptedEnvelope": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "type": "array"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "data": {
+            "$ref": "#/components/schemas/EvaluationAccepted"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/Freshness"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "capabilities",
+          "blockers",
+          "freshness",
+          "version"
+        ],
+        "type": "object"
+      },
+      "EvaluationCommand": {
+        "additionalProperties": false,
+        "properties": {
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "idempotencyKey"
+        ],
+        "type": "object"
+      },
+      "Freshness": {
+        "properties": {
+          "asOf": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sourceVersion": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "asOf",
+          "sourceVersion"
+        ],
+        "type": "object"
+      },
+      "MonthlyPrice": {
+        "properties": {
+          "currency": {
+            "description": "USD only in V1",
+            "enum": [
+              "USD"
+            ],
+            "type": "string"
+          },
+          "feeHighMinor": {
+            "description": "round(infraHighMinor × feeRateBps / 10000), half away from zero",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "feeLowMinor": {
+            "description": "round(infraLowMinor × feeRateBps / 10000), half away from zero",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "infraHighMinor": {
+            "description": "sum of the breakdown lines' high amounts",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "infraLowMinor": {
+            "description": "sum of the breakdown lines' low amounts",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalHighMinor": {
+            "description": "infraHighMinor + feeHighMinor",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalLowMinor": {
+            "description": "infraLowMinor + feeLowMinor",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "infraLowMinor",
+          "infraHighMinor",
+          "feeLowMinor",
+          "feeHighMinor",
+          "totalLowMinor",
+          "totalHighMinor",
+          "currency"
+        ],
+        "type": "object"
+      },
+      "NotPriced": {
+        "properties": {
+          "detail": {
+            "description": "optional human detail",
+            "type": "string"
+          },
+          "kind": {
+            "description": "archcatalog kind that could not be priced",
+            "type": "string"
+          },
+          "reason": {
+            "description": "closed reason, aligned with pricecatalog.NotOffered; never rendered as zero",
+            "enum": [
+              "not_offered",
+              "not_fetched",
+              "unsupported"
+            ],
+            "type": "string"
+          },
+          "sku": {
+            "description": "pricecatalog SKU key, when known",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reason"
+        ],
+        "type": "object"
+      },
+      "PreviousSelection": {
+        "properties": {
+          "deltaHighMinor": {
+            "description": "row totalHighMinor − previous totalHighMinor",
+            "format": "int64",
+            "type": "integer"
+          },
+          "deltaLowMinor": {
+            "description": "row totalLowMinor − previous totalLowMinor; present exactly when the row is priced",
+            "format": "int64",
+            "type": "integer"
+          },
+          "provider": {
+            "description": "V1 provider id; literal, never resolved or defaulted",
+            "enum": [
+              "digitalocean",
+              "aws",
+              "azure"
+            ],
+            "type": "string"
+          },
+          "region": {
+            "description": "provider-neutral V1 region leaf",
+            "enum": [
+              "us-east",
+              "eu-frankfurt",
+              "ap-singapore"
+            ],
+            "type": "string"
+          },
+          "selectionId": {
+            "type": "string"
+          },
+          "totalHighMinor": {
+            "description": "the previous selection's total, high",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalLowMinor": {
+            "description": "the previous selection's total, low",
+            "format": "int64",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "versionId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "selectionId",
+          "versionId",
+          "provider",
+          "region",
+          "totalLowMinor",
+          "totalHighMinor"
+        ],
+        "type": "object"
+      },
+      "PriceSource": {
+        "properties": {
+          "capturedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "label": {
+            "description": "e.g. \"DigitalOcean list price\"; shown with capturedAt",
+            "type": "string"
+          },
+          "provider": {
+            "description": "V1 provider id; literal, never resolved or defaulted",
+            "enum": [
+              "digitalocean",
+              "aws",
+              "azure"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "label",
+          "url",
+          "capturedAt"
+        ],
+        "type": "object"
+      },
+      "SelectionCommandV2": {
+        "additionalProperties": false,
+        "properties": {
+          "alertAboveMinor": {
+            "description": "\"alert me above $X\" in minor units; omit (or null) for no alert; never stops anything",
+            "exclusiveMinimum": 0,
+            "format": "int64",
+            "type": "integer"
+          },
+          "idempotencyKey": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "provider": {
+            "description": "V1 provider id; literal, never resolved or defaulted",
+            "enum": [
+              "digitalocean",
+              "aws",
+              "azure"
+            ],
+            "type": "string"
+          },
+          "region": {
+            "description": "provider-neutral V1 region leaf",
+            "enum": [
+              "us-east",
+              "eu-frankfurt",
+              "ap-singapore"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "region",
+          "idempotencyKey"
+        ],
+        "type": "object"
+      },
+      "SelectionResultV2": {
+        "properties": {
+          "alertAboveMinor": {
+            "description": "\"alert me above $X\" in minor units; omit (or null) for no alert; never stops anything",
+            "exclusiveMinimum": 0,
+            "format": "int64",
+            "type": "integer"
+          },
+          "contractVersion": {
+            "const": "2.0.0",
+            "description": "v2 stamp; a body without it is not a v2 body",
+            "type": "string"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "provider": {
+            "description": "V1 provider id; literal, never resolved or defaulted",
+            "enum": [
+              "digitalocean",
+              "aws",
+              "azure"
+            ],
+            "type": "string"
+          },
+          "region": {
+            "description": "provider-neutral V1 region leaf",
+            "enum": [
+              "us-east",
+              "eu-frankfurt",
+              "ap-singapore"
+            ],
+            "type": "string"
+          },
+          "selectedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "selectionId": {
+            "type": "string"
+          },
+          "warnings": {
+            "description": "always an array; e.g. alert_below_estimate (CLD-06.2)",
+            "items": {
+              "$ref": "#/components/schemas/SelectionWarning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "contractVersion",
+          "selectionId",
+          "evaluationId",
+          "provider",
+          "region",
+          "selectedAt",
+          "warnings"
+        ],
+        "type": "object"
+      },
+      "SelectionResultV2Envelope": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "type": "array"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "data": {
+            "$ref": "#/components/schemas/SelectionResultV2"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/Freshness"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "data",
+          "capabilities",
+          "blockers",
+          "freshness",
+          "version"
+        ],
+        "type": "object"
+      },
+      "SelectionWarning": {
+        "properties": {
+          "code": {
+            "description": "non-blocking; a warning never refuses the selection",
+            "enum": [
+              "alert_below_estimate"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "type": "object"
+      },
+      "SnapshotRef": {
+        "properties": {
+          "asOf": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "description": "the price catalogue snapshot the evaluation pinned",
+            "type": "string"
+          },
+          "sources": {
+            "description": "every source a breakdown line cites",
+            "items": {
+              "$ref": "#/components/schemas/PriceSource"
+            },
+            "minItems": 1,
+            "type": "array"
+          },
+          "stale": {
+            "description": "server-owned: asOf older than 30 days; every estimate says stale",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "asOf",
+          "sources",
+          "stale"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Where should it run (Post-Execution Pipeline V1 spec §7, Appendix B). One row per provider × region with the monthly price as infrastructure + Passo's fee = total, each a low/high range in integer minor units (cents), a per-component breakdown with source and date, and the pinned price snapshot. Amounts are rounded once from micros; a row's infrastructure is the sum of its rounded lines and its total is infrastructure + fee. A component that cannot be priced is listed in notPriced with a reason and the row is partial; it is never shown as zero. Responses are wrapped in the shared apicontract envelope.",
+    "title": "passo.build cloud compare API (v2)",
+    "version": "2.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/vibe/projects/{projectId}/versions/{versionId}/cloud/compare": {
+      "get": {
+        "operationId": "getCloudCompareV2",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pinned project version; must be FROZEN_COMPLETE for selection",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/CompareViewEnvelope"
+                  }
+                }
+              },
+              "description": "the compare view, envelope-wrapped"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "project or version not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "version not FROZEN_COMPLETE"
+            }
+          }
+        },
+        "summary": "The compare rows of the latest evaluation: snapshot, fee rate, rows with ranges, breakdown and not-priced components"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/cloud/evaluations": {
+      "post": {
+        "operationId": "startCloudEvaluation",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pinned project version; must be FROZEN_COMPLETE for selection",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "202": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EvaluationAcceptedEnvelope"
+                  }
+                }
+              },
+              "description": "evaluation started (or the one this idempotency key already started)"
+            }
+          },
+          "400": {
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "missing or oversized idempotencyKey"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "project or version not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "version not FROZEN_COMPLETE"
+            }
+          }
+        },
+        "summary": "Price the version's confirmed architecture on every V1 provider and region"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/cloud/selections": {
+      "post": {
+        "operationId": "createCloudSelectionV2",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pinned project version; must be FROZEN_COMPLETE for selection",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionCommandV2"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SelectionResultV2Envelope"
+                  }
+                }
+              },
+              "description": "selection recorded (a replay of the same idempotency key returns the same selection)"
+            }
+          },
+          "400": {
+            "400": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "missing provider/region/idempotencyKey, or alertAboveMinor \u003c= 0"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "project, version or row not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "cloud not deployable (estimate-only row) / row partial or unpriced / version not FROZEN_COMPLETE / selection duplicate"
+            }
+          }
+        },
+        "summary": "Choose a row by provider and region, with an optional alert threshold that never stops anything"
+      }
+    }
+  }
+}

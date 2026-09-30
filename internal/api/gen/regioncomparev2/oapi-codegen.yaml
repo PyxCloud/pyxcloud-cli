@@ -1,0 +1,6 @@
+# oapi-codegen config for api/contracts/regioncompare.v2.openapi.json. Regenerate: go generate ./internal/api/gen/...
+package: regioncomparev2
+generate:
+  models: true
+  client: true
+output: regioncomparev2.gen.go
