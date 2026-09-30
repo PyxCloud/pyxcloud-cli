@@ -38,14 +38,14 @@ func TestLoadMissingAndRejectsInvalidFiles(t *testing.T) {
 func TestSaveLoadAndPermissions(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "private", "nested")
 	path := filepath.Join(dir, "ledger.json")
-	want := Ledger{SchemaVersion: 1, Profile: "p", ProjectID: 42, VersionID: "v", ReleaseID: "r", RunID: "run", Cursor: "c", Operations: map[string]Operation{
+	want := Ledger{SchemaVersion: 1, Profile: "p", ProjectID: 42, VersionID: "v", VersionSequence: 23, ReleaseID: "r", RunID: "run", Cursor: "c", Operations: map[string]Operation{
 		"op": {Key: "key", State: "done", UpdatedAt: time.Date(2026, 9, 30, 1, 2, 3, 0, time.UTC)},
 	}}
 	if err := Save(path, want); err != nil {
 		t.Fatal(err)
 	}
 	got, err := Load(path)
-	if err != nil || got.Profile != want.Profile || got.ProjectID != want.ProjectID || got.Operations["op"] != want.Operations["op"] {
+	if err != nil || got.Profile != want.Profile || got.ProjectID != want.ProjectID || got.VersionID != want.VersionID || got.VersionSequence != want.VersionSequence || got.Operations["op"] != want.Operations["op"] {
 		t.Fatalf("Load after Save = %#v, %v", got, err)
 	}
 	checkMode(t, dir, 0700)

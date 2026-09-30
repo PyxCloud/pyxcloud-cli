@@ -199,10 +199,10 @@ func TestHumanStatusShowsSanitizedNextActionAndBrowserURL(t *testing.T) {
 }
 
 func TestRuntimeRejectsConflictingLedgerIdentities(t *testing.T) {
-	for _, tc := range []struct{ flag, value string }{{"--version", "v-other"}, {"--release", "r-other"}, {"--run", "run-other"}} {
+	for _, tc := range []struct{ flag, value string }{{"--version", "v-other"}, {"--version-sequence", "24"}, {"--release", "r-other"}, {"--run", "run-other"}} {
 		t.Run(tc.flag, func(t *testing.T) {
 			path := t.TempDir() + "/ledger.json"
-			if err := osWriteFile(path, []byte(`{"schemaVersion":1,"profile":"sandbox","projectId":7,"versionId":"v-ledger","releaseId":"r-ledger","runId":"run-ledger","operations":{}}`)); err != nil {
+			if err := osWriteFile(path, []byte(`{"schemaVersion":1,"profile":"sandbox","projectId":7,"versionId":"v-ledger","versionSequence":23,"releaseId":"r-ledger","runId":"run-ledger","operations":{}}`)); err != nil {
 				t.Fatal(err)
 			}
 			args := []string{"--project", "7", "--ledger", path, tc.flag, tc.value, "status"}
@@ -214,6 +214,34 @@ func TestRuntimeRejectsConflictingLedgerIdentities(t *testing.T) {
 				t.Fatalf("got %v", err)
 			}
 		})
+	}
+}
+
+func TestVersionSequenceFlagDrivesCloudRouteWithoutReplacingUUID(t *testing.T) {
+	const versionUUID = "9fce9406-6e8e-4e74-9342-2d3c7ba4207e"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/vibe/projects/42/versions/23/cloud/compare" {
+			t.Errorf("request path=%q", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"data":{"versionId":23}}`)
+	}))
+	defer srv.Close()
+	t.Setenv("PASSO_API_URL", srv.URL)
+	t.Setenv("PASSO_ISSUER_URL", srv.URL)
+	t.Setenv("PASSO_CONSOLE_URL", srv.URL)
+	store := &memoryStore{token: passoauth.Token{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}}
+	var out, errOut bytes.Buffer
+	cmd := New(Options{Out: &out, Err: &errOut, Store: store})
+	cmd.SetArgs([]string{"--project", "42", "--version", versionUUID, "--version-sequence", "23", "--json", "compare"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var got Result
+	if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.VersionID != versionUUID || got.VersionSequence != 23 {
+		t.Fatalf("UUID and ordinal must remain distinct: %#v", got)
 	}
 }
 

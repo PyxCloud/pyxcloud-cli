@@ -62,6 +62,64 @@ func TestPerformPendingBeforeRequestAndAlwaysInvokesServer(t *testing.T) {
 	}
 }
 
+func TestFreezeResponsePersistsUUIDAndVersionSequenceSeparately(t *testing.T) {
+	dir := t.TempDir()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/projects/42/contract/release-freeze" {
+			t.Errorf("path=%q", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusAccepted)
+		_, _ = io.WriteString(w, `{"data":{"versionId":"9fce9406-6e8e-4e74-9342-2d3c7ba4207e","versionSequence":23,"releaseId":"rel-1"}}`)
+	}))
+	defer srv.Close()
+	r := testRunner(t, srv, dir)
+	got, err := r.Perform(context.Background(), "release", "journeycontract:releaseFreezeCreate", map[string]string{"projectId": "42"}, nil, json.RawMessage(`{"expectedVersion":4}`), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.VersionID != "9fce9406-6e8e-4e74-9342-2d3c7ba4207e" || got.VersionSequence != 23 || r.VersionSequence != 23 {
+		t.Fatalf("freeze identities not observed separately: result=%#v runtime=%#v", got, r)
+	}
+	data, err := os.ReadFile(r.LedgerPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ledger map[string]any
+	if err := json.Unmarshal(data, &ledger); err != nil {
+		t.Fatal(err)
+	}
+	if ledger["versionId"] != "9fce9406-6e8e-4e74-9342-2d3c7ba4207e" || ledger["versionSequence"] != float64(23) {
+		t.Fatalf("ledger must preserve both identities: %s", data)
+	}
+}
+
+func TestCloudScopeUsesVersionSequenceAndRejectsUUIDOrdinalGuess(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if r.URL.Path != "/vibe/projects/42/versions/23/cloud/compare" {
+			t.Errorf("cloud path=%q", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `{"data":{"versionId":23}}`)
+	}))
+	defer srv.Close()
+	r := testRunner(t, srv, t.TempDir())
+	r.VersionID = "9fce9406-6e8e-4e74-9342-2d3c7ba4207e"
+	r.VersionSequence = 23
+	_, err := r.Perform(context.Background(), "cloud", "regioncompare.v2:getCloudCompareV2", map[string]string{"projectId": "42", "versionId": "23"}, nil, nil, false)
+	if err != nil {
+		t.Fatalf("authoritative sequence should match cloud route: %v", err)
+	}
+	if r.VersionID != "9fce9406-6e8e-4e74-9342-2d3c7ba4207e" {
+		t.Fatalf("numeric cloud versionId replaced UUID: %q", r.VersionID)
+	}
+	_, err = r.Perform(context.Background(), "cloud", "regioncompare.v2:getCloudCompareV2", map[string]string{"projectId": "42", "versionId": r.VersionID}, nil, nil, false)
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != "scope_mismatch" || calls != 1 {
+		t.Fatalf("UUID must not be guessed as ordinal: err=%v calls=%d", err, calls)
+	}
+}
+
 func TestPerformStableKeyIncludesPathParamsAnd202IsAccepted(t *testing.T) {
 	var keys []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

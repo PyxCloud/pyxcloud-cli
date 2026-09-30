@@ -37,16 +37,16 @@ func TestReleaseCommandsUseContractRoutesAndPassBodies(t *testing.T) {
 		{"freeze preview", "freeze preview", "GET", "/projects/42/contract/freeze-preview", "", "", 200},
 		{"eligibility", "freeze eligibility", "GET", "/projects/42/contract", "", "", 200},
 		{"proposed pins", "freeze proposed-pins", "GET", "/projects/42/contract/proposed-pins", "", "", 200},
-		{"branches", "freeze branches", "GET", "/projects/42/contract/release-scope-lock-branches", "version=v-7", "", 200},
+		{"branches", "freeze branches", "GET", "/projects/42/contract/release-scope-lock-branches", "version=9fce9406-6e8e-4e74-9342-2d3c7ba4207e", "", 200},
 		{"freeze create", "freeze create --input", "POST", "/projects/42/contract/release-freeze", "", `{"expectedVersion":3}`, 202},
 		{"freeze lock", "freeze lock --input", "POST", "/projects/42/contract/version-lock", "", `{}`, 202},
 		{"freeze mirror", "freeze mirror --input", "POST", "/projects/42/contract/spec-revision", "", `{}`, 202},
 		{"branches create", "freeze branches create --input", "POST", "/projects/42/contract/release-scope-lock-branches", "", `{"version":"v-7"}`, 202},
-		{"scan", "secure scan", "GET", "/vibe/projects/42/versions/v-7/security/scan", "", "", 200},
-		{"gate", "secure gate", "GET", "/vibe/projects/42/versions/v-7/security/gate", "", "", 200},
-		{"finding", "secure finding f-1", "GET", "/vibe/projects/42/versions/v-7/security/gate/findings/f-1/detail", "", "", 200},
-		{"remediation preview", "secure remediation-preview --input", "POST", "/vibe/projects/42/versions/v-7/security/gate/preview", "", `{"evaluationId":"e-1"}`, 202},
-		{"remediation confirm", "secure remediation-confirm --input", "POST", "/vibe/projects/42/versions/v-7/security/gate/confirm", "", `{"previewId":"p-1"}`, 202},
+		{"scan", "secure scan", "GET", "/vibe/projects/42/versions/7/security/scan", "", "", 200},
+		{"gate", "secure gate", "GET", "/vibe/projects/42/versions/7/security/gate", "", "", 200},
+		{"finding", "secure finding f-1", "GET", "/vibe/projects/42/versions/7/security/gate/findings/f-1/detail", "", "", 200},
+		{"remediation preview", "secure remediation-preview --input", "POST", "/vibe/projects/42/versions/7/security/gate/preview", "", `{"evaluationId":"e-1"}`, 202},
+		{"remediation confirm", "secure remediation-confirm --input", "POST", "/vibe/projects/42/versions/7/security/gate/confirm", "", `{"previewId":"p-1"}`, 202},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -94,7 +94,7 @@ func TestReleaseCommandsUseContractRoutesAndPassBodies(t *testing.T) {
 			profile.APIURL = srv.URL
 			client := passotransport.New(srv.URL, func(context.Context) (string, error) { return "test-token", nil })
 			client.HTTPClient = srv.Client()
-			runtime := &Runtime{Profile: profile, Client: client, ProjectID: 42, VersionID: "v-7", LedgerPath: filepath.Join(dir, "ledger.json"), EvidenceDir: filepath.Join(dir, "evidence"), Out: &output, JSON: true, timeout: time.Second, now: time.Now}
+			runtime := &Runtime{Profile: profile, Client: client, ProjectID: 42, VersionID: "9fce9406-6e8e-4e74-9342-2d3c7ba4207e", VersionSequence: 7, LedgerPath: filepath.Join(dir, "ledger.json"), EvidenceDir: filepath.Join(dir, "evidence"), Out: &output, JSON: true, timeout: time.Second, now: time.Now}
 			root := releaseTestRoot(runtime, nil, &output)
 			root.SetArgs(args)
 			if err := root.Execute(); err != nil {
@@ -125,7 +125,7 @@ func TestReleaseCommandsRejectBadInputAndMissingScopeBeforeRequest(t *testing.T)
 	}{
 		{"project", "freeze preview", "project_required", 0, "", ""},
 		{"branches version", "freeze branches", "version_required", 42, "", ""},
-		{"scan version", "secure scan", "version_required", 42, "", ""},
+		{"scan version sequence", "secure scan", "version_sequence_required", 42, "", ""},
 		{"mutation input", "freeze create", "input_required", 42, "v-7", ""},
 		{"malformed input", "freeze create --input", "invalid_input", 42, "v-7", `[]`},
 		{"oversized input", "secure remediation-preview --input", "invalid_input", 42, "v-7", `{"x":"` + strings.Repeat("a", maxInputBytes) + `"}`},
@@ -173,7 +173,7 @@ func TestRemediationConfirmReturnsHumanPolicyError(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"previewId":"p-1"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	runtime := &Runtime{Profile: profile, Client: client, ProjectID: 42, VersionID: "v-7", LedgerPath: filepath.Join(t.TempDir(), "ledger.json"), Out: io.Discard}
+	runtime := &Runtime{Profile: profile, Client: client, ProjectID: 42, VersionID: "9fce9406-6e8e-4e74-9342-2d3c7ba4207e", VersionSequence: 7, LedgerPath: filepath.Join(t.TempDir(), "ledger.json"), Out: io.Discard}
 	root := releaseTestRoot(runtime, nil, io.Discard)
 	root.SetArgs([]string{"secure", "remediation-confirm", "--input", path})
 	err := root.Execute()

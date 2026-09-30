@@ -114,7 +114,7 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 			r.Ledger.Operations = map[string]passostate.Operation{}
 		}
 		r.Ledger.Profile, r.Ledger.ProjectID = r.Profile.Name, r.ProjectID
-		r.Ledger.VersionID, r.Ledger.ReleaseID, r.Ledger.RunID = r.VersionID, r.ReleaseID, r.RunID
+		r.Ledger.VersionID, r.Ledger.VersionSequence, r.Ledger.ReleaseID, r.Ledger.RunID = r.VersionID, r.VersionSequence, r.ReleaseID, r.RunID
 		r.Ledger.Operations[operationKey] = passostate.Operation{Key: key, State: "pending", UpdatedAt: started}
 		if err := passostate.Save(r.LedgerPath, r.Ledger); err != nil {
 			return empty, &ExitError{20, "ledger_write_failed"}
@@ -151,7 +151,7 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 		}
 		return empty, &ExitError{30, "invalid_api_response"}
 	}
-	oldProject, oldVersion, oldRelease, oldRun := r.ProjectID, r.VersionID, r.ReleaseID, r.RunID
+	oldProject, oldVersion, oldSequence, oldRelease, oldRun := r.ProjectID, r.VersionID, r.VersionSequence, r.ReleaseID, r.RunID
 	if err := r.observeIDs(resp.Body, operationKey); err != nil {
 		if mutation {
 			r.Ledger.Operations[operationKey] = passostate.Operation{Key: key, State: "uncertain", UpdatedAt: now()}
@@ -161,7 +161,7 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 	}
 	status := "observed"
 	ledgerState := ""
-	idsChanged := oldProject != r.ProjectID || oldVersion != r.VersionID || oldRelease != r.ReleaseID || oldRun != r.RunID
+	idsChanged := oldProject != r.ProjectID || oldVersion != r.VersionID || oldSequence != r.VersionSequence || oldRelease != r.ReleaseID || oldRun != r.RunID
 	if mutation {
 		status, ledgerState = "accepted", "accepted"
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
@@ -174,7 +174,7 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 			r.Ledger.SchemaVersion = 1
 		}
 		r.Ledger.Profile = r.Profile.Name
-		r.Ledger.VersionID, r.Ledger.ReleaseID, r.Ledger.RunID = r.VersionID, r.ReleaseID, r.RunID
+		r.Ledger.VersionID, r.Ledger.VersionSequence, r.Ledger.ReleaseID, r.Ledger.RunID = r.VersionID, r.VersionSequence, r.ReleaseID, r.RunID
 		if err := passostate.Save(r.LedgerPath, r.Ledger); err != nil {
 			return empty, &ExitError{20, "ledger_write_failed"}
 		}
@@ -187,7 +187,7 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 	if mutation {
 		resultStatus = "accepted"
 	}
-	return Result{Stage: stage, Status: resultStatus, ProjectID: r.ProjectID, VersionID: r.VersionID, ReleaseID: r.ReleaseID, RunID: r.RunID, Data: resp.Body, Evidence: evidencePaths(path)}, nil
+	return Result{Stage: stage, Status: resultStatus, ProjectID: r.ProjectID, VersionID: r.VersionID, VersionSequence: r.VersionSequence, ReleaseID: r.ReleaseID, RunID: r.RunID, Data: resp.Body, Evidence: evidencePaths(path)}, nil
 }
 
 func (r *Runtime) matchesScope(op passocontract.Operation, params map[string]string) bool {
@@ -201,12 +201,30 @@ func (r *Runtime) matchesScope(op passocontract.Operation, params map[string]str
 			return false
 		}
 	}
-	for _, scope := range []struct{ key, value string }{{"versionId", r.VersionID}, {"releaseId", r.ReleaseID}, {"runId", r.RunID}} {
+	versionScope := r.VersionID
+	if usesVersionSequence(op) {
+		if r.VersionSequence <= 0 {
+			return false
+		}
+		versionScope = strconv.FormatInt(r.VersionSequence, 10)
+	}
+	for _, scope := range []struct{ key, value string }{{"versionId", versionScope}, {"releaseId", r.ReleaseID}, {"runId", r.RunID}} {
 		if expected, ok := params[scope.key]; ok && scope.value != "" && expected != scope.value {
 			return false
 		}
 	}
 	return true
+}
+
+func usesVersionSequence(op passocontract.Operation) bool {
+	// These API contracts accept the numeric frozen-version sequence in their
+	// versionId path slot; release operations continue to use the UUID.
+	switch op.Contract {
+	case "regioncompare", "regioncompare.v2", "securitygate", "securityscan":
+		return true
+	default:
+		return false
+	}
 }
 
 func evidencePaths(path string) []string {
@@ -244,6 +262,11 @@ func (r *Runtime) observeIDs(raw json.RawMessage, operationKey string) error {
 	}
 	if v := readString("versionId"); v != "" {
 		r.VersionID, r.Ledger.VersionID = v, v
+	}
+	if operationKey == "journeycontract:releaseFreezeCreate" {
+		if sequence := readInt("versionSequence"); sequence > 0 {
+			r.VersionSequence, r.Ledger.VersionSequence = sequence, sequence
+		}
 	}
 	if v := readString("releaseId"); v != "" {
 		r.ReleaseID, r.Ledger.ReleaseID = v, v

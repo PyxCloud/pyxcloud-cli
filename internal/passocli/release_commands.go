@@ -36,11 +36,24 @@ func newReleaseCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 		}
 		return run(r)
 	}
+	withSequenceRuntime := func(cmd *cobra.Command, run func(*Runtime) error) error {
+		r, err := makeRuntime(cmd)
+		if err != nil {
+			return err
+		}
+		if r.ProjectID <= 0 {
+			return &ExitError{20, "project_required"}
+		}
+		if r.VersionSequence <= 0 {
+			return &ExitError{20, "version_sequence_required"}
+		}
+		return run(r)
+	}
 	performRead := func(cmd *cobra.Command, stage, operation string, version bool, query func(*Runtime) url.Values) error {
-		return withRuntime(cmd, version, func(r *Runtime) error {
+		perform := func(r *Runtime) error {
 			params := map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10)}
 			if strings.HasPrefix(operation, "security") {
-				params["versionId"] = r.VersionID
+				params["versionId"] = strconv.FormatInt(r.VersionSequence, 10)
 			}
 			q := url.Values{}
 			if query != nil {
@@ -51,24 +64,32 @@ func newReleaseCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 				return err
 			}
 			return r.Emit(result)
-		})
+		}
+		if strings.HasPrefix(operation, "security") {
+			return withSequenceRuntime(cmd, perform)
+		}
+		return withRuntime(cmd, version, perform)
 	}
 	performMutation := func(cmd *cobra.Command, stage, operation string, needsVersion, bodyKey bool) error {
 		input, err := readInput(cmd)
 		if err != nil {
 			return err
 		}
-		return withRuntime(cmd, needsVersion, func(r *Runtime) error {
+		perform := func(r *Runtime) error {
 			params := map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10)}
 			if needsVersion {
-				params["versionId"] = r.VersionID
+				params["versionId"] = strconv.FormatInt(r.VersionSequence, 10)
 			}
 			result, err := r.Perform(cmd.Context(), stage, operation, params, url.Values{}, input, bodyKey)
 			if err != nil {
 				return err
 			}
 			return r.Emit(result)
-		})
+		}
+		if strings.HasPrefix(operation, "security") {
+			return withSequenceRuntime(cmd, perform)
+		}
+		return withRuntime(cmd, needsVersion, perform)
 	}
 
 	freeze := &cobra.Command{Use: "freeze", Short: "Inspect and create release freezes", Args: cobra.NoArgs}
@@ -117,8 +138,8 @@ func newReleaseCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 		if strings.TrimSpace(args[0]) == "" {
 			return &ExitError{20, "invalid_finding_id"}
 		}
-		return withRuntime(cmd, true, func(r *Runtime) error {
-			result, err := r.Perform(cmd.Context(), "security", "securitygate:getSecurityGateFindingDetail", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": r.VersionID, "findingId": args[0]}, url.Values{}, nil, false)
+		return withSequenceRuntime(cmd, func(r *Runtime) error {
+			result, err := r.Perform(cmd.Context(), "security", "securitygate:getSecurityGateFindingDetail", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": strconv.FormatInt(r.VersionSequence, 10), "findingId": args[0]}, url.Values{}, nil, false)
 			if err != nil {
 				return err
 			}

@@ -15,14 +15,15 @@ import (
 
 // Ledger stores durable state for a project workflow.
 type Ledger struct {
-	SchemaVersion int                  `json:"schemaVersion"`
-	Profile       string               `json:"profile"`
-	ProjectID     int64                `json:"projectId"`
-	VersionID     string               `json:"versionId"`
-	ReleaseID     string               `json:"releaseId"`
-	RunID         string               `json:"runId"`
-	Cursor        string               `json:"cursor"`
-	Operations    map[string]Operation `json:"operations"`
+	SchemaVersion   int                  `json:"schemaVersion"`
+	Profile         string               `json:"profile"`
+	ProjectID       int64                `json:"projectId"`
+	VersionID       string               `json:"versionId"`
+	VersionSequence int64                `json:"versionSequence,omitempty"`
+	ReleaseID       string               `json:"releaseId"`
+	RunID           string               `json:"runId"`
+	Cursor          string               `json:"cursor"`
+	Operations      map[string]Operation `json:"operations"`
 }
 
 // Operation records the current state of one idempotent operation.
@@ -71,6 +72,9 @@ func Load(path string) (Ledger, error) {
 	if ledger.ProjectID < 0 {
 		return Ledger{}, errors.New("invalid ledger project ID")
 	}
+	if ledger.VersionSequence < 0 {
+		return Ledger{}, errors.New("invalid ledger version sequence")
+	}
 	if ledger.Operations == nil {
 		ledger.Operations = make(map[string]Operation)
 	}
@@ -84,6 +88,9 @@ func Save(path string, ledger Ledger) error {
 	}
 	if ledger.ProjectID < 0 {
 		return errors.New("invalid ledger project ID")
+	}
+	if ledger.VersionSequence < 0 {
+		return errors.New("invalid ledger version sequence")
 	}
 	if ledger.Operations == nil {
 		ledger.Operations = make(map[string]Operation)

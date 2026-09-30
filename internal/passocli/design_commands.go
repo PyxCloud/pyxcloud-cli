@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/url"
 	"strconv"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -28,8 +27,8 @@ func newDesignCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*co
 		if r.ProjectID <= 0 {
 			return &ExitError{20, "project_required"}
 		}
-		if checkVersion && strings.TrimSpace(r.VersionID) == "" {
-			return &ExitError{20, "version_required"}
+		if checkVersion && r.VersionSequence <= 0 {
+			return &ExitError{20, "version_sequence_required"}
 		}
 		return run(r)
 	}
@@ -98,7 +97,7 @@ func newDesignCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*co
 	compare := &cobra.Command{Use: "compare", Short: "Read or change cloud comparison", Args: cobra.NoArgs}
 	compare.RunE = func(cmd *cobra.Command, _ []string) error {
 		return withRuntime(cmd, true, func(r *Runtime) error {
-			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare.v2:getCloudCompareV2", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": r.VersionID}, url.Values{}, nil, false)
+			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare.v2:getCloudCompareV2", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": strconv.FormatInt(r.VersionSequence, 10)}, url.Values{}, nil, false)
 			if err != nil {
 				return err
 			}
@@ -113,7 +112,7 @@ func newDesignCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*co
 			return err
 		}
 		return withRuntime(cmd, true, func(r *Runtime) error {
-			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare.v2:startCloudEvaluation", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": r.VersionID}, url.Values{}, input, false)
+			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare.v2:startCloudEvaluation", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": strconv.FormatInt(r.VersionSequence, 10)}, url.Values{}, input, false)
 			if err != nil {
 				return err
 			}
@@ -128,7 +127,7 @@ func newDesignCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*co
 			return err
 		}
 		return withRuntime(cmd, true, func(r *Runtime) error {
-			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare:createCloudSelection", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": r.VersionID}, url.Values{}, input, false)
+			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare:createCloudSelection", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": strconv.FormatInt(r.VersionSequence, 10)}, url.Values{}, input, false)
 			if err != nil {
 				return err
 			}

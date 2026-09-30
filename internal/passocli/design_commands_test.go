@@ -43,9 +43,9 @@ func TestDesignCommandsUseGeneratedRoutesAuthAndManagedMutationKeys(t *testing.T
 		{name: "proposal read", args: "design proposal prop-1", method: http.MethodGet, path: "/vibe/projects/42/architecture/proposals/prop-1", status: http.StatusOK},
 		{name: "generation create", args: "design generate --input", method: http.MethodPost, path: "/vibe/projects/42/architecture/generations", input: `{"optimizationObjective":"BALANCED"}`, operation: "architecture:createArchitectureGeneration", managedBodyKey: true, status: http.StatusAccepted},
 		{name: "architecture choose", args: "design choose --input", method: http.MethodPost, path: "/vibe/projects/42/architecture/selections", input: `{"generationId":"gen-1","proposalId":"prop-1"}`, operation: "architecture:createArchitectureSelection", managedBodyKey: true, status: http.StatusAccepted},
-		{name: "compare read", args: "compare", method: http.MethodGet, path: "/vibe/projects/42/versions/v-7/cloud/compare", status: http.StatusOK},
-		{name: "evaluation start", args: "compare evaluate --input", method: http.MethodPost, path: "/vibe/projects/42/versions/v-7/cloud/evaluations", input: `{"deploymentRegionId":"nyc3","objective":"LOWEST_COST"}`, operation: "regioncompare.v2:startCloudEvaluation", wantBody: map[string]any{"deploymentRegionId": "nyc3", "objective": "LOWEST_COST"}, status: http.StatusAccepted},
-		{name: "cloud choose", args: "compare choose --input", method: http.MethodPost, path: "/vibe/projects/42/versions/v-7/cloud/selections", input: `{"deploymentRegionId":"nyc3","evaluationId":"eval-1","candidateId":"candidate-1"}`, operation: "regioncompare:createCloudSelection", wantBody: map[string]any{"deploymentRegionId": "nyc3", "evaluationId": "eval-1", "candidateId": "candidate-1"}, status: http.StatusAccepted},
+		{name: "compare read", args: "compare", method: http.MethodGet, path: "/vibe/projects/42/versions/7/cloud/compare", status: http.StatusOK},
+		{name: "evaluation start", args: "compare evaluate --input", method: http.MethodPost, path: "/vibe/projects/42/versions/7/cloud/evaluations", input: `{"deploymentRegionId":"nyc3","objective":"LOWEST_COST"}`, operation: "regioncompare.v2:startCloudEvaluation", wantBody: map[string]any{"deploymentRegionId": "nyc3", "objective": "LOWEST_COST"}, status: http.StatusAccepted},
+		{name: "cloud choose", args: "compare choose --input", method: http.MethodPost, path: "/vibe/projects/42/versions/7/cloud/selections", input: `{"deploymentRegionId":"nyc3","evaluationId":"eval-1","candidateId":"candidate-1"}`, operation: "regioncompare:createCloudSelection", wantBody: map[string]any{"deploymentRegionId": "nyc3", "evaluationId": "eval-1", "candidateId": "candidate-1"}, status: http.StatusAccepted},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -101,7 +101,7 @@ func TestDesignCommandsUseGeneratedRoutesAuthAndManagedMutationKeys(t *testing.T
 			profile.APIURL = srv.URL
 			client := passotransport.New(srv.URL, func(context.Context) (string, error) { return "test-token", nil })
 			client.HTTPClient = srv.Client()
-			runtime := &Runtime{Profile: profile, Client: client, ProjectID: 42, VersionID: "v-7", LedgerPath: filepath.Join(dir, "ledger.json"), EvidenceDir: filepath.Join(dir, "evidence"), Out: &output, JSON: true, timeout: time.Second, now: time.Now}
+			runtime := &Runtime{Profile: profile, Client: client, ProjectID: 42, VersionID: "9fce9406-6e8e-4e74-9342-2d3c7ba4207e", VersionSequence: 7, LedgerPath: filepath.Join(dir, "ledger.json"), EvidenceDir: filepath.Join(dir, "evidence"), Out: &output, JSON: true, timeout: time.Second, now: time.Now}
 			root := designTestRoot(t, runtime, nil, &output)
 			root.SetArgs(args)
 			if err := root.Execute(); err != nil {
@@ -145,7 +145,7 @@ func TestDesignCommandsRejectMissingScopeOrInputBeforeRequest(t *testing.T) {
 		version              string
 	}{
 		{name: "project", args: "design", wantCode: "project_required"},
-		{name: "version", args: "compare", project: 42, wantCode: "version_required"},
+		{name: "version sequence", args: "compare", project: 42, wantCode: "version_sequence_required"},
 		{name: "input", args: "design generate", project: 42, wantCode: "input_required"},
 		{name: "selection input", args: "compare choose", project: 42, version: "v-7", wantCode: "input_required"},
 		{name: "evaluation input", args: "compare evaluate", project: 42, version: "v-7", wantCode: "input_required"},
