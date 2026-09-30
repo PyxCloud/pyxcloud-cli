@@ -136,6 +136,7 @@ func New(opts Options) *cobra.Command {
 	root.AddCommand(monitor)
 	root.AddCommand(newCommandsCatalogCommand(root, &asJSON))
 	root.AddCommand(newAgentSetupCommand(os.UserHomeDir))
+	root.AddCommand(newDoctorCommand(&profile, &ledgerPath, &project, &asJSON, os.UserHomeDir))
 	return root
 }
 func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64, version string, versionSequence int64, release, runID, environment string, expected int64, ledgerPath, evidenceDir string, asJSON bool, poll, timeout time.Duration) (*Runtime, error) {
