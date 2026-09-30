@@ -78,13 +78,11 @@ func Execute(ctx context.Context, args []string, out, errOut io.Writer) int {
 	if ee, ok := err.(*ExitError); ok {
 		msg = ee.Code
 	}
-	jsonMode := false
-	for _, a := range args {
-		if a == "--json" {
-			jsonMode = true
-		}
-	}
+	jsonMode, _ := cmd.PersistentFlags().GetBool("json")
 	if jsonMode {
+		if _, ok := err.(*ExitError); !ok {
+			msg = "command_failed"
+		}
 		_ = json.NewEncoder(out).Encode(Result{SchemaVersion: 1, Status: "error", Code: msg})
 		return code
 	}

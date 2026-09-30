@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -49,7 +50,7 @@ func TestStatusReturnsJourneyEnvelopeWithoutMutation(t *testing.T) {
 		if r.Method != "GET" || r.URL.Path != "/vibe/projects/42/journey" {
 			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
 		}
-		_, _ = io.WriteString(w, `{"data":{"stage":"gate","primaryAction":{"label":"Review"}},"blockers":[{"code":"unknown"}]}`)
+		_, _ = io.WriteString(w, `{"data":{"projectId":42,"stage":"gate","primaryAction":{"key":"open_board","label":"Review"}},"blockers":[{"code":"unknown"}]}`)
 	}))
 	defer srv.Close()
 	t.Setenv("PASSO_API_URL", srv.URL)
@@ -102,7 +103,7 @@ func TestStatusRefreshesExpiringTokenAndCancellation(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer fresh-access" {
 			t.Errorf("authorization not refreshed: %q", r.Header.Get("Authorization"))
 		}
-		_, _ = io.WriteString(w, `{"data":{"stage":"board"}}`)
+		_, _ = io.WriteString(w, `{"data":{"projectId":7,"stage":"board","primaryAction":{"key":"open_board"}}}`)
 	}))
 	defer srv.Close()
 	t.Setenv("PASSO_API_URL", srv.URL)
@@ -135,5 +136,132 @@ func TestStatusHonorsCancellation(t *testing.T) {
 	cmd.SetArgs([]string{"--project", "7", "status"})
 	if err := cmd.ExecuteContext(ctx); err == nil || ExitCode(err) != 20 {
 		t.Fatalf("expected canceled command error, got %v", err)
+	}
+}
+
+func TestStatusRejectsMalformedOrMismatchedJourney(t *testing.T) {
+	cases := []struct{ name, body string }{
+		{"missing data", `{"data":null}`},
+		{"missing project", `{"data":{"stage":"gate","primaryAction":{"key":"open_board"}}}`},
+		{"wrong project", `{"data":{"projectId":8,"stage":"gate","primaryAction":{"key":"open_board"}}}`},
+		{"unknown stage", `{"data":{"projectId":7,"stage":"unknown","primaryAction":{"key":"open_board"}}}`},
+		{"missing action key", `{"data":{"projectId":7,"stage":"gate","primaryAction":{"label":"Review"}}}`},
+		{"action not object", `{"data":{"projectId":7,"stage":"gate","primaryAction":[]}}`},
+		{"malformed json", `not-json`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = io.WriteString(w, tc.body) }))
+			defer srv.Close()
+			t.Setenv("PASSO_API_URL", srv.URL)
+			t.Setenv("PASSO_ISSUER_URL", srv.URL)
+			t.Setenv("PASSO_CONSOLE_URL", srv.URL)
+			var out, errOut bytes.Buffer
+			cmd := New(Options{Out: &out, Err: &errOut, Store: &memoryStore{token: passoauth.Token{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}}})
+			cmd.SetArgs([]string{"--project", "7", "--json", "status"})
+			err := cmd.ExecuteContext(context.Background())
+			var ee *ExitError
+			if !errors.As(err, &ee) || ee.ExitCode != 30 || ee.Code != "invalid_journey_response" {
+				t.Fatalf("got %v", err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("reported success for invalid journey: %s", out.String())
+			}
+		})
+	}
+}
+
+func TestRuntimeRejectsConflictingLedgerIdentities(t *testing.T) {
+	for _, tc := range []struct{ flag, value string }{{"--version", "v-other"}, {"--release", "r-other"}, {"--run", "run-other"}} {
+		t.Run(tc.flag, func(t *testing.T) {
+			path := t.TempDir() + "/ledger.json"
+			if err := osWriteFile(path, []byte(`{"schemaVersion":1,"profile":"sandbox","projectId":7,"versionId":"v-ledger","releaseId":"r-ledger","runId":"run-ledger","operations":{}}`)); err != nil {
+				t.Fatal(err)
+			}
+			args := []string{"--project", "7", "--ledger", path, tc.flag, tc.value, "status"}
+			cmd := New(Options{Out: io.Discard, Err: io.Discard, Store: &memoryStore{}})
+			cmd.SetArgs(args)
+			err := cmd.ExecuteContext(context.Background())
+			var ee *ExitError
+			if !errors.As(err, &ee) || ee.Code != "scope_mismatch" {
+				t.Fatalf("got %v", err)
+			}
+		})
+	}
+}
+
+func TestMonitorDefaultsToOneShotAndWatchReturnsTypedDeadline(t *testing.T) {
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = io.WriteString(w, `{"data":{"projectId":7,"stage":"board","primaryAction":{"key":"open_board"}}}`)
+	}))
+	defer srv.Close()
+	t.Setenv("PASSO_API_URL", srv.URL)
+	t.Setenv("PASSO_ISSUER_URL", srv.URL)
+	t.Setenv("PASSO_CONSOLE_URL", srv.URL)
+	store := &memoryStore{token: passoauth.Token{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}}
+	var out, errOut bytes.Buffer
+	cmd := New(Options{Out: &out, Err: &errOut, Store: store})
+	cmd.SetArgs([]string{"--project", "7", "--json", "monitor"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 || strings.Count(out.String(), "\n") != 1 {
+		t.Fatalf("calls=%d output=%q", calls, out.String())
+	}
+	calls = 0
+	out.Reset()
+	cmd = New(Options{Out: &out, Err: &errOut, Store: store})
+	cmd.SetArgs([]string{"--project", "7", "--json", "--timeout=20ms", "--poll-interval=1ms", "monitor", "--watch"})
+	err := cmd.ExecuteContext(context.Background())
+	var ee *ExitError
+	if !errors.As(err, &ee) || ee.Code != "deadline_exceeded" || ee.ExitCode != 20 {
+		t.Fatalf("got %v", err)
+	}
+	if calls < 1 || strings.Count(out.String(), "\n") < 1 {
+		t.Fatalf("calls=%d records=%q", calls, out.String())
+	}
+}
+
+func TestExecuteParsesJSONFlagAndSanitizesGenericErrors(t *testing.T) {
+	for _, tc := range []struct {
+		arg  string
+		json bool
+	}{{"--json", true}, {"--json=true", true}, {"--json=false", false}} {
+		t.Run(tc.arg, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			code := Execute(context.Background(), []string{tc.arg, "unknown-command"}, &out, &errOut)
+			if code == 0 {
+				t.Fatal("expected error")
+			}
+			if tc.json {
+				var got Result
+				if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+					t.Fatalf("not JSON: %q (%v)", out.String(), err)
+				}
+				if got.Code != "command_failed" {
+					t.Fatalf("unstable error code %q", got.Code)
+				}
+				if errOut.Len() != 0 {
+					t.Fatalf("unexpected stderr %q", errOut.String())
+				}
+			} else if out.Len() != 0 || errOut.Len() == 0 {
+				t.Fatalf("unexpected outputs stdout=%q stderr=%q", out.String(), errOut.String())
+			}
+		})
+	}
+}
+
+func TestMonitorCancellationReturnsTypedError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var out, errOut bytes.Buffer
+	cmd := New(Options{Out: &out, Err: &errOut, Store: &memoryStore{}})
+	cmd.SetArgs([]string{"--project", "1", "--json", "monitor", "--watch"})
+	err := cmd.ExecuteContext(ctx)
+	var ee *ExitError
+	if !errors.As(err, &ee) || ee.Code != "canceled" || ee.ExitCode != 20 {
+		t.Fatalf("got %v", err)
 	}
 }

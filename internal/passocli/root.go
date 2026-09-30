@@ -116,13 +116,16 @@ func New(opts Options) *cobra.Command {
 		}
 		return r.status(cmd.Context())
 	}})
-	root.AddCommand(&cobra.Command{Use: "monitor", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	monitor := &cobra.Command{Use: "monitor", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		r, e := runtimeFor(cmd)
 		if e != nil {
 			return e
 		}
-		return r.monitor(cmd.Context())
-	}})
+		watch, _ := cmd.Flags().GetBool("watch")
+		return r.monitor(cmd.Context(), watch)
+	}}
+	monitor.Flags().Bool("watch", false, "repeat reads; with --json stream NDJSON until timeout or cancellation")
+	root.AddCommand(monitor)
 	return root
 }
 func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64, version, release, runID, environment string, expected int64, ledgerPath, evidenceDir string, asJSON bool, poll, timeout time.Duration) (*Runtime, error) {
@@ -145,6 +148,9 @@ func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64,
 	}
 	if project < 0 {
 		return nil, &ExitError{20, "invalid_project"}
+	}
+	if (version != "" && ledger.VersionID != "" && version != ledger.VersionID) || (release != "" && ledger.ReleaseID != "" && release != ledger.ReleaseID) || (runID != "" && ledger.RunID != "" && runID != ledger.RunID) {
+		return nil, &ExitError{20, "scope_mismatch"}
 	}
 	if version == "" {
 		version = ledger.VersionID
@@ -232,29 +238,62 @@ func (r *Runtime) status(ctx context.Context) error {
 		return classify(err)
 	}
 	var envelope struct {
-		Data struct {
+		Data *struct {
+			ProjectID     int64           `json:"projectId"`
 			Stage         string          `json:"stage"`
 			PrimaryAction json.RawMessage `json:"primaryAction"`
 		} `json:"data"`
 	}
-	_ = json.Unmarshal(resp.Body, &envelope)
+	if json.Unmarshal(resp.Body, &envelope) != nil || envelope.Data == nil || envelope.Data.ProjectID <= 0 || envelope.Data.ProjectID != r.ProjectID || !validJourneyStage(envelope.Data.Stage) || !validPrimaryAction(envelope.Data.PrimaryAction) {
+		return &ExitError{30, "invalid_journey_response"}
+	}
 	return r.Emit(Result{Stage: envelope.Data.Stage, Status: "observed", NextAction: json.RawMessage(envelope.Data.PrimaryAction), Data: resp.Body})
 }
-func (r *Runtime) monitor(ctx context.Context) error {
+func validJourneyStage(stage string) bool {
+	switch stage {
+	case "pre_execution", "board", "gate", "architecture", "cloud", "deploy", "live":
+		return true
+	}
+	return false
+}
+func validPrimaryAction(raw json.RawMessage) bool {
+	var action map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &action) != nil || action == nil {
+		return false
+	}
+	var key string
+	return json.Unmarshal(action["key"], &key) == nil && strings.TrimSpace(key) != ""
+}
+func (r *Runtime) monitor(ctx context.Context, watch bool) error {
+	if !watch {
+		return r.status(ctx)
+	}
 	deadline, cancel := context.WithTimeout(ctx, r.timeout)
 	defer cancel()
 	for {
+		if err := deadline.Err(); err != nil {
+			return monitorContextError(err)
+		}
 		if err := r.status(deadline); err != nil {
+			if contextErr := deadline.Err(); contextErr != nil {
+				return monitorContextError(contextErr)
+			}
 			return err
 		}
 		timer := time.NewTimer(r.PollInterval)
 		select {
 		case <-deadline.Done():
 			timer.Stop()
-			return nil
+			return monitorContextError(deadline.Err())
 		case <-timer.C:
 		}
 	}
+}
+func monitorContextError(err error) error {
+	if errors.Is(err, context.Canceled) {
+		return &ExitError{20, "canceled"}
+	}
+	return &ExitError{20, "deadline_exceeded"}
 }
 func classify(err error) error {
 	var api *passotransport.APIError
