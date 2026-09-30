@@ -363,3 +363,17 @@ func TestPerformWithIfMatchRejectsNegativeBeforeLedgerAndNetwork(t *testing.T) {
 		t.Fatalf("negative version wrote ledger: %v", statErr)
 	}
 }
+
+func TestPerformChecksDocumentationProjectVersionAgainstSelectedUUID(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++ }))
+	defer server.Close()
+	for _, selected := range []string{"selected-uuid", ""} {
+		r := testRunner(t, server, t.TempDir())
+		r.VersionID = selected
+		_, err := r.Perform(context.Background(), "docs", "documentation:documentationSnapshotRead", map[string]string{"projectId": "42", "projectVersionId": "other-uuid"}, nil, nil, false)
+		if err == nil || err.Error() != "scope_mismatch" || calls != 0 {
+			t.Fatalf("selected=%q error=%v calls=%d", selected, err, calls)
+		}
+	}
+}

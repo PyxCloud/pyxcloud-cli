@@ -74,7 +74,9 @@ func newPreexecCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 	docs := &cobra.Command{Use: "docs", Args: cobra.NoArgs}
 	docsRead := operationCommand("read", "documentation", "define:documentationRead", true, false, makeRuntime, nil)
 	docs.RunE = docsRead.RunE
-	docs.AddCommand(docsRead,
+	docs.AddCommand(docsRead)
+	docs.AddCommand(newCanonicalDocumentationCommands(makeRuntime)...)
+	docs.AddCommand(
 		operationCommand("generate", "documentation", "define:documentationGenerate", true, false, makeRuntime, nil),
 		operationCommand("compilations", "documentation", "vibe-docs-boardos:listDocumentCompilations", true, false, makeRuntime, nil),
 		operationCommand("compile", "documentation", "vibe-docs-boardos:compileDocumentation", true, true, makeRuntime, nil),

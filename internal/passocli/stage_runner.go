@@ -214,6 +214,11 @@ func (r *Runtime) matchesScope(op passocontract.Operation, params map[string]str
 			return false
 		}
 	}
+	if op.Contract == "documentation" {
+		if value, ok := params["projectVersionId"]; ok && (r.VersionID == "" || value != r.VersionID) {
+			return false
+		}
+	}
 	versionScope := r.VersionID
 	if usesVersionSequence(op) {
 		if r.VersionSequence <= 0 {

@@ -15,7 +15,8 @@ import (
 type doc struct {
 	Paths      map[string]map[string]operation `json:"paths"`
 	Components struct {
-		Schemas map[string]schema `json:"schemas"`
+		Schemas    map[string]schema    `json:"schemas"`
+		Parameters map[string]parameter `json:"parameters"`
 	} `json:"components"`
 }
 type operation struct {
@@ -23,8 +24,10 @@ type operation struct {
 	Parameters  []parameter `json:"parameters"`
 }
 type parameter struct {
-	Name, In string
-	Required bool `json:"required"`
+	Ref      string `json:"$ref"`
+	Name     string `json:"name"`
+	In       string `json:"in"`
+	Required bool   `json:"required"`
 }
 type schema struct {
 	Type       string                     `json:"type"`
@@ -102,10 +105,17 @@ func run(check bool) error {
 				if o.OperationID == "" {
 					continue
 				}
+				resolvedParameters, resolveErr := resolveParameters(o.Parameters, d.Components.Parameters)
+				if resolveErr != nil {
+					return fmt.Errorf("%s %s %s parameters: %w", file, strings.ToUpper(m), p, resolveErr)
+				}
 				key := stem + ":" + o.OperationID
 				params := []string{}
-				for _, v := range o.Parameters {
+				for _, v := range resolvedParameters {
 					if v.In == "path" {
+						if !v.Required {
+							return fmt.Errorf("%s %s %s path parameter %s is not required", file, strings.ToUpper(m), p, v.Name)
+						}
 						params = append(params, v.Name)
 					}
 				}
@@ -128,6 +138,73 @@ func run(check bool) error {
 	}
 	return output("internal/passocontract/journey_generated.go", journeyBytes, check)
 }
+func resolveParameters(parameters []parameter, definitions map[string]parameter) ([]parameter, error) {
+	resolved := make([]parameter, len(parameters))
+	for i, item := range parameters {
+		value, err := resolveParameter(item, definitions, map[string]bool{})
+		if err != nil {
+			return nil, fmt.Errorf("parameter %d: %w", i, err)
+		}
+		if value.Name == "" || (value.In != "path" && value.In != "query" && value.In != "header" && value.In != "cookie") {
+			return nil, fmt.Errorf("parameter %d has incomplete name or location", i)
+		}
+		resolved[i] = value
+	}
+	return resolved, nil
+}
+
+func resolveParameter(value parameter, definitions map[string]parameter, visiting map[string]bool) (parameter, error) {
+	if value.Ref == "" {
+		return value, nil
+	}
+	const prefix = "#/components/parameters/"
+	if !strings.HasPrefix(value.Ref, prefix) {
+		return parameter{}, fmt.Errorf("unsupported parameter reference %q", value.Ref)
+	}
+	encodedName := strings.TrimPrefix(value.Ref, prefix)
+	if encodedName == "" || strings.Contains(encodedName, "/") {
+		return parameter{}, fmt.Errorf("unsupported parameter reference %q", value.Ref)
+	}
+	name, err := decodeJSONPointerToken(encodedName)
+	if err != nil {
+		return parameter{}, fmt.Errorf("unsupported parameter reference %q", value.Ref)
+	}
+	if visiting[name] {
+		return parameter{}, fmt.Errorf("cyclic parameter reference %q", value.Ref)
+	}
+	target, ok := definitions[name]
+	if !ok {
+		return parameter{}, fmt.Errorf("unresolved parameter reference %q", value.Ref)
+	}
+	visiting[name] = true
+	resolved, err := resolveParameter(target, definitions, visiting)
+	delete(visiting, name)
+	return resolved, err
+}
+
+func decodeJSONPointerToken(token string) (string, error) {
+	var out strings.Builder
+	for i := 0; i < len(token); i++ {
+		if token[i] != '~' {
+			out.WriteByte(token[i])
+			continue
+		}
+		if i+1 >= len(token) {
+			return "", fmt.Errorf("invalid JSON pointer escape")
+		}
+		i++
+		switch token[i] {
+		case '0':
+			out.WriteByte('~')
+		case '1':
+			out.WriteByte('/')
+		default:
+			return "", fmt.Errorf("invalid JSON pointer escape")
+		}
+	}
+	return out.String(), nil
+}
+
 func output(path string, data []byte, check bool) error {
 	old, err := os.ReadFile(path)
 	if check {

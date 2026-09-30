@@ -270,7 +270,7 @@ func operationStage(key string) string {
 		return "connect"
 	case "journey":
 		return "monitor"
-	case "vibe-docs-boardos":
+	case "vibe-docs-boardos", "documentation":
 		return "docs"
 	case "define":
 		if strings.HasPrefix(key, "define:defineAnalysis") {
