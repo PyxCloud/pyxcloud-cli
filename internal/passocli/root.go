@@ -112,6 +112,7 @@ func New(opts Options) *cobra.Command {
 	root.AddCommand(newDesignCommands(runtimeFor)...)
 	root.AddCommand(newPreexecCommands(runtimeFor)...)
 	root.AddCommand(newReleaseCommands(runtimeFor)...)
+	root.AddCommand(newDeployCommands(runtimeFor)...)
 	root.AddCommand(&cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		r, e := runtimeFor(cmd)
 		if e != nil {
