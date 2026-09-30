@@ -57,6 +57,16 @@ def fixture_credentials(path: Path) -> tuple[str, str]:
     raise ValueError("realm fixture has no password credential")
 
 
+def validate_form_action(action: str, page_url: str, issuer: str) -> str:
+    resolved = urljoin(page_url, action)
+    actual, expected = urlparse(resolved), urlparse(issuer)
+    if (actual.scheme, actual.hostname, actual.port) != (expected.scheme, expected.hostname, expected.port):
+        raise ValueError("login form action origin mismatch")
+    if actual.username or actual.password or actual.fragment:
+        raise ValueError("invalid login form action")
+    return resolved
+
+
 def browser_pkce_token(issuer: str, username: str, password: str) -> str:
     issuer = local_http_url(issuer, allow_sso=True)
     verifier = secrets.token_urlsafe(64)
@@ -68,6 +78,7 @@ def browser_pkce_token(issuer: str, username: str, password: str) -> str:
         "code_challenge_method": "S256", "state": state,
     })
     s = requests.Session()
+    s.trust_env = False
     page = s.get(authorize, timeout=15, allow_redirects=False)
     page.raise_for_status()
     if urlparse(page.url).netloc != urlparse(issuer).netloc:
@@ -76,8 +87,9 @@ def browser_pkce_token(issuer: str, username: str, password: str) -> str:
     form.feed(page.text)
     if not form.action:
         raise RuntimeError("login form missing")
+    form_action = validate_form_action(form.action, page.url, issuer)
     form.fields.update({"username": username, "password": password})
-    submitted = s.post(urljoin(page.url, form.action), data=form.fields, timeout=15, allow_redirects=False)
+    submitted = s.post(form_action, data=form.fields, timeout=15, allow_redirects=False)
     location = submitted.headers.get("Location", "")
     if submitted.status_code not in (302, 303) or not location:
         raise RuntimeError("login did not redirect to callback")
@@ -91,8 +103,9 @@ def browser_pkce_token(issuer: str, username: str, password: str) -> str:
     token_response = s.post(issuer + "/protocol/openid-connect/token", data={
         "grant_type": "authorization_code", "client_id": "passo-cli",
         "code": params["code"][0], "redirect_uri": CALLBACK, "code_verifier": verifier,
-    }, timeout=15)
-    token_response.raise_for_status()
+    }, timeout=15, allow_redirects=False)
+    if token_response.status_code != 200:
+        raise RuntimeError("token exchange failed")
     token = token_response.json().get("access_token")
     if not token:
         raise RuntimeError("token endpoint omitted access token")
@@ -117,6 +130,40 @@ def project_identity(row):
     return str(row.get("name", "")), row.get("id", row.get("projectId"))
 
 
+def child_env(token: str, api: str, issuer: str):
+    env = os.environ.copy()
+    env.update({"PASSO_ACCESS_TOKEN": token, "PASSO_API_URL": api, "PASSO_ISSUER_URL": issuer})
+    return env
+
+
+def matching_projects(rows, project_name):
+    return [(name, pid) for name, pid in map(project_identity, rows) if name == project_name]
+
+
+def unique_project_id(matches):
+    if len(matches) > 1:
+        raise ValueError("duplicate project name")
+    return str(matches[0][1]) if matches else None
+
+
+def create_project(cli: str, token: str, api: str, issuer: str, project_name: str, td: str):
+    input_file = Path(td) / "project.json"
+    ledger = Path(td) / "creation-ledger.json"
+    evidence = Path(td) / "creation-evidence"
+    input_file.write_text(json.dumps({"name": project_name, "description": "Local M0 feedback loop"}))
+    os.chmod(input_file, 0o600)
+    env = child_env(token, api, issuer)
+    created = subprocess.run([cli, "--profile", "sandbox", "--ledger", str(ledger), "--evidence-dir", str(evidence),
+                              "projects", "create", "--input", str(input_file), "--json"],
+                             env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+    if created.returncode:
+        raise RuntimeError("CLI project creation failed")
+
+
+def report_failure(exc: Exception):
+    print("M0 smoke failed: " + type(exc).__name__, file=sys.stderr)
+
+
 def compact_status(raw: bytes, project_id: str):
     result = json.loads(raw)
     if result.get("schemaVersion") != 1 or result.get("profile") != "sandbox":
@@ -132,9 +179,8 @@ def compact_status(raw: bytes, project_id: str):
             "status": result.get("status"), "stage": result["stage"], "nextActionKey": action["key"]}
 
 
-def invoke_status(cli: str, token: str, project_id: str, ledger: Path, evidence: Path):
-    env = os.environ.copy()
-    env["PASSO_ACCESS_TOKEN"] = token
+def invoke_status(cli: str, token: str, api: str, issuer: str, project_id: str, ledger: Path, evidence: Path):
+    env = child_env(token, api, issuer)
     cmd = [cli, "--profile", "sandbox", "--project", str(project_id), "--ledger", str(ledger),
            "--evidence-dir", str(evidence), "--json", "status"]
     proc = subprocess.run(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
@@ -168,28 +214,25 @@ def main():
     issuer = local_http_url(args.issuer, allow_sso=True)
     username, password = fixture_credentials(args.realm_fixture)
     token = browser_pkce_token(issuer, username, password)
+    rest = requests.Session()
+    rest.trust_env = False
     headers = {"Authorization": "Bearer " + token}
-    listing = requests.get(api + "/vibe/projects", headers=headers, timeout=15)
-    listing.raise_for_status()
-    matches = [(name, pid) for name, pid in map(project_identity, project_rows(listing)) if name == args.project_name]
-    if matches:
-        project_id = str(matches[0][1])
-    else:
+    listing = rest.get(api + "/vibe/projects", headers=headers, timeout=15, allow_redirects=False)
+    if listing.status_code != 200:
+        raise RuntimeError("project list request failed")
+    matches = matching_projects(project_rows(listing), args.project_name)
+    project_id = unique_project_id(matches)
+    if not project_id:
         # Creation is deliberately delegated to the integrated CLI; never mutate through REST here.
         with tempfile.TemporaryDirectory() as td:
-            input_file = Path(td) / "project.json"
-            input_file.write_text(json.dumps({"name": args.project_name, "description": "Local M0 feedback loop"}))
-            os.chmod(input_file, 0o600)
-            env = os.environ.copy(); env["PASSO_ACCESS_TOKEN"] = token
-            created = subprocess.run([args.cli, "--profile", "sandbox", "projects", "create", "--input", str(input_file), "--json"],
-                                     env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
-            if created.returncode:
-                raise RuntimeError("CLI project creation failed (output suppressed)")
-            fresh = requests.get(api + "/vibe/projects", headers=headers, timeout=15); fresh.raise_for_status()
-            matches = [(name, pid) for name, pid in map(project_identity, project_rows(fresh)) if name == args.project_name]
-            if not matches:
+            create_project(args.cli, token, api, issuer, args.project_name, td)
+            fresh = rest.get(api + "/vibe/projects", headers=headers, timeout=15, allow_redirects=False)
+            if fresh.status_code != 200:
+                raise RuntimeError("project list request failed after creation")
+            matches = matching_projects(project_rows(fresh), args.project_name)
+            project_id = unique_project_id(matches)
+            if not project_id:
                 raise RuntimeError("created project absent from public project list")
-            project_id = str(matches[0][1])
     if not project_id.isdigit() or int(project_id) <= 0:
         raise RuntimeError("invalid project ID")
 
@@ -198,9 +241,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="specops-m0-") as td:
         ledger = Path(td) / "ledger.json"
         evidence = Path(td) / "cli-evidence"
-        first = invoke_status(args.cli, token, project_id, ledger, evidence)
+        first = invoke_status(args.cli, token, api, issuer, project_id, ledger, evidence)
         before = (tree_fingerprint(ledger.parent), tree_fingerprint(evidence))
-        second = invoke_status(args.cli, token, project_id, ledger, evidence)
+        second = invoke_status(args.cli, token, api, issuer, project_id, ledger, evidence)
         after = (tree_fingerprint(ledger.parent), tree_fingerprint(evidence))
         if first != second or before != after:
             raise RuntimeError("second status read changed output or local workflow state")
@@ -219,5 +262,5 @@ if __name__ == "__main__":
     try:
         main()
     except Exception as exc:
-        print("M0 smoke failed: " + str(exc), file=sys.stderr)
+        report_failure(exc)
         sys.exit(1)
