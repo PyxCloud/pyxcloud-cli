@@ -131,7 +131,7 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 		if mutation {
 			state := "uncertain"
 			var api *passotransport.APIError
-			if errors.As(callErr, &api) {
+			if errors.As(callErr, &api) && api.StatusCode >= 400 && api.StatusCode < 500 && api.StatusCode != http.StatusRequestTimeout {
 				state = "failed"
 			}
 			r.Ledger.Operations[operationKey] = passostate.Operation{Key: key, State: state, UpdatedAt: now()}

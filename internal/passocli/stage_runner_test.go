@@ -129,6 +129,39 @@ func TestPerformRejectsScopeMismatchBeforeLedgerOrNetwork(t *testing.T) {
 	}
 }
 
+func TestPerformClassifiesHTTPMutationFailuresByCertainty(t *testing.T) {
+	for _, tc := range []struct {
+		status   int
+		state    string
+		evidence string
+		exitCode int
+	}{{http.StatusServiceUnavailable, "uncertain", "uncertain", 30}, {http.StatusRequestTimeout, "uncertain", "uncertain", 20}, {http.StatusBadRequest, "failed", "failed", 20}} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			dir := t.TempDir()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(tc.status); _, _ = io.WriteString(w, `{}`) }))
+			defer srv.Close()
+			r := testRunner(t, srv, dir)
+			_, err := r.Perform(context.Background(), "advance", "projects:projectStateAdvance", map[string]string{"projectId": "42"}, nil, nil, false)
+			if got := ExitCode(err); got != tc.exitCode {
+				t.Fatalf("ExitCode(%v)=%d, want %d", err, got, tc.exitCode)
+			}
+			ledger, loadErr := passostate.Load(r.LedgerPath)
+			if loadErr != nil || ledger.Operations["projects:projectStateAdvance"].State != tc.state {
+				t.Fatalf("ledger state=%q err=%v", ledger.Operations["projects:projectStateAdvance"].State, loadErr)
+			}
+			entries, readErr := os.ReadDir(r.EvidenceDir)
+			if readErr != nil || len(entries) != 1 {
+				t.Fatalf("evidence entries=%v err=%v", entries, readErr)
+			}
+			var evidence passostate.Evidence
+			data, readErr := os.ReadFile(r.EvidenceDir + "/" + entries[0].Name())
+			if readErr != nil || json.Unmarshal(data, &evidence) != nil || evidence.Status != tc.evidence {
+				t.Fatalf("evidence status=%q err=%v data=%s", evidence.Status, readErr, data)
+			}
+		})
+	}
+}
+
 func TestPerformRejectsMismatchedProjectAndMalformedResponse(t *testing.T) {
 	for _, response := range []string{`{"data":{"projectId":43}}`, `not-json`} {
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = io.WriteString(w, response) }))
