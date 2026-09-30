@@ -69,7 +69,7 @@ func TestFreezeResponsePersistsUUIDAndVersionSequenceSeparately(t *testing.T) {
 			t.Errorf("path=%q", r.URL.Path)
 		}
 		w.WriteHeader(http.StatusAccepted)
-		_, _ = io.WriteString(w, `{"data":{"versionId":"9fce9406-6e8e-4e74-9342-2d3c7ba4207e","versionSequence":23,"releaseId":"rel-1"}}`)
+		_, _ = io.WriteString(w, `{"data":{"versionId":"9fce9406-6e8e-4e74-9342-2d3c7ba4207e","versionLabel":"r1-6387061","versionSequence":23,"releaseId":"rel-1"}}`)
 	}))
 	defer srv.Close()
 	r := testRunner(t, srv, dir)
@@ -77,7 +77,7 @@ func TestFreezeResponsePersistsUUIDAndVersionSequenceSeparately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.VersionID != "9fce9406-6e8e-4e74-9342-2d3c7ba4207e" || got.VersionSequence != 23 || r.VersionSequence != 23 {
+	if got.VersionID != "9fce9406-6e8e-4e74-9342-2d3c7ba4207e" || got.VersionLabel != "r1-6387061" || got.VersionSequence != 23 || r.VersionSequence != 23 {
 		t.Fatalf("freeze identities not observed separately: result=%#v runtime=%#v", got, r)
 	}
 	data, err := os.ReadFile(r.LedgerPath)
@@ -88,8 +88,79 @@ func TestFreezeResponsePersistsUUIDAndVersionSequenceSeparately(t *testing.T) {
 	if err := json.Unmarshal(data, &ledger); err != nil {
 		t.Fatal(err)
 	}
-	if ledger["versionId"] != "9fce9406-6e8e-4e74-9342-2d3c7ba4207e" || ledger["versionSequence"] != float64(23) {
+	if ledger["versionId"] != "9fce9406-6e8e-4e74-9342-2d3c7ba4207e" || ledger["versionLabel"] != "r1-6387061" || ledger["versionSequence"] != float64(23) {
 		t.Fatalf("ledger must preserve both identities: %s", data)
+	}
+}
+
+func TestFreezeLockCapturesAuthoritativeLabelAndRejectsUnsafeOrMismatchedLabels(t *testing.T) {
+	tests := []struct {
+		name, body string
+		wantErr    string
+	}{
+		{"lock label", `{"data":{"versionId":"9fce9406-6e8e-4e74-9342-2d3c7ba4207e","versionLabel":"r2-6387061"}}`, ""},
+		{"unsafe label", `{"data":{"versionId":"9fce9406-6e8e-4e74-9342-2d3c7ba4207e","versionLabel":"../main"}}`, "invalid_version_label"},
+		{"label without version UUID", `{"data":{"versionLabel":"r2-6387061"}}`, "invalid_version_label"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusAccepted)
+				_, _ = io.WriteString(w, tt.body)
+			}))
+			defer srv.Close()
+			r := testRunner(t, srv, t.TempDir())
+			_, err := r.Perform(context.Background(), "release", "journeycontract:releaseVersionLockCreate", map[string]string{"projectId": "42"}, nil, json.RawMessage(`{}`), false)
+			if tt.wantErr == "" {
+				if err != nil || r.VersionLabel != "r2-6387061" {
+					t.Fatalf("lock label=%q err=%v", r.VersionLabel, err)
+				}
+				return
+			}
+			var exit *ExitError
+			if !errors.As(err, &exit) || exit.Code != tt.wantErr {
+				t.Fatalf("err=%v, want %s", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestArbitraryResponseCannotSetVersionLabel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":{"versionId":"9fce9406-6e8e-4e74-9342-2d3c7ba4207e","versionLabel":"r9-abcdef0","version":"do-not-use"}}`)
+	}))
+	defer srv.Close()
+	r := testRunner(t, srv, t.TempDir())
+	_, err := r.Perform(context.Background(), "release", "journeycontract:releaseEligibilityRead", map[string]string{"projectId": "42"}, nil, nil, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.VersionLabel != "" {
+		t.Fatalf("non-authoritative response set version label %q", r.VersionLabel)
+	}
+}
+
+func TestReleaseBranchRoutesCannotEscapeRuntimeVersionLabel(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		calls++
+		_, _ = io.WriteString(w, `{}`)
+	}))
+	defer srv.Close()
+	r := testRunner(t, srv, t.TempDir())
+	r.VersionLabel = "r1-6387061"
+	_, err := r.Perform(context.Background(), "release", "journeycontract:releaseBranchesPreview", map[string]string{"projectId": "42"}, url.Values{"version": []string{"r2-6387061"}}, nil, false)
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != "scope_mismatch" || calls != 0 {
+		t.Fatalf("preview err=%v calls=%d", err, calls)
+	}
+	_, err = r.Perform(context.Background(), "release", "journeycontract:releaseBranchesPreview", map[string]string{"projectId": "42"}, url.Values{"version": []string{"r1-6387061", "r2-6387061"}}, nil, false)
+	if !errors.As(err, &exit) || exit.Code != "scope_mismatch" || calls != 0 {
+		t.Fatalf("duplicate preview versions err=%v calls=%d", err, calls)
+	}
+	_, err = r.Perform(context.Background(), "release", "journeycontract:releaseBranchesMaterialize", map[string]string{"projectId": "42"}, nil, json.RawMessage(`{"version":"r2-6387061"}`), false)
+	if !errors.As(err, &exit) || exit.Code != "scope_mismatch" || calls != 0 {
+		t.Fatalf("materialize err=%v calls=%d", err, calls)
 	}
 }
 

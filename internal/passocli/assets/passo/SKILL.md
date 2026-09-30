@@ -33,14 +33,15 @@ Set `PASSO_PLAN` to the user's approved, existing plan file before running that 
 
 Direct stage commands use the same project scope, for example `passo --json --project "$PASSO_PROJECT_ID" discover start` or `passo --json --project "$PASSO_PROJECT_ID" docs generate --input "$PASSO_DOC_INPUT"`. Freeze input is a JSON file: `passo --json --project "$PASSO_PROJECT_ID" freeze create --input "$PASSO_FREEZE_INPUT"`.
 
-Cloud and security routes use the positive numeric sequence returned by freeze (`--version-sequence`); release routes use the version UUID (`--version`). Never convert one identity into the other or guess a mapping. A missing sequence is a stop condition. `--timeout` and `--poll-interval` bound waiting; an accepted HTTP response is not proof of completion, and a ledger entry is not proof either.
+Cloud and security routes use the positive numeric sequence returned by freeze (`--version-sequence`); release routes use the version UUID (`--version`). Release branch preview/materialization uses the separate Git-safe version label (`--version-label`), returned as `versionLabel` by freeze or version-lock creation and persisted in the ledger. Never convert one identity into another or guess a mapping. Missing identity is a stop condition. `freeze branches create` derives its request body from `--version-label`; it does not take an input file. `--timeout` and `--poll-interval` bound waiting; an accepted HTTP response is not proof of completion, and a ledger entry is not proof either.
 
 Use the canonical values explicitly when reading those APIs:
 
 ```sh
 passo --json --project "$PASSO_PROJECT_ID" --version-sequence "$PASSO_VERSION_SEQUENCE" compare
 passo --json --project "$PASSO_PROJECT_ID" --version-sequence "$PASSO_VERSION_SEQUENCE" secure gate
-passo --json --project "$PASSO_PROJECT_ID" --version "$PASSO_VERSION_ID" freeze branches
+passo --json --project "$PASSO_PROJECT_ID" --version-label "$PASSO_VERSION_LABEL" freeze branches
+passo --json --project "$PASSO_PROJECT_ID" --version-label "$PASSO_VERSION_LABEL" freeze branches create
 ```
 
 ## 3. Verify
@@ -68,5 +69,6 @@ Check the command exit code and JSON `status`/`code`: `0` means completed, `10` 
 | --- | --- |
 | Treating ledger state or HTTP `202` as completion | Re-read the canonical backend state. |
 | Passing a version UUID to a cloud/security route | Use the authoritative numeric `--version-sequence`. |
+| Passing a version UUID to release branch preview | Use the authoritative `--version-label` returned by freeze or version-lock creation. |
 | Treating exit `10` as failure to automate | Preserve the human browser handoff. |
 | Reporting sandbox fixture output as a real deployment | Label it as fixture evidence only. |

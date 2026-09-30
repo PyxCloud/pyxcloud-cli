@@ -24,21 +24,21 @@ type Options struct {
 	Now        func() time.Time
 }
 type Runtime struct {
-	Profile                                  passoauth.Profile
-	Client                                   *passotransport.Client
-	Ledger                                   passostate.Ledger
-	LedgerPath, EvidenceDir                  string
-	ProjectID                                int64
-	VersionID, ReleaseID, RunID, Environment string
-	VersionSequence                          int64
-	ExpectedVersion                          int64
-	JSON                                     bool
-	Out, Err                                 io.Writer
-	PollInterval                             time.Duration
-	timeout                                  time.Duration
-	store                                    passoauth.Store
-	now                                      func() time.Time
-	httpClient                               *http.Client
+	Profile                                                passoauth.Profile
+	Client                                                 *passotransport.Client
+	Ledger                                                 passostate.Ledger
+	LedgerPath, EvidenceDir                                string
+	ProjectID                                              int64
+	VersionID, VersionLabel, ReleaseID, RunID, Environment string
+	VersionSequence                                        int64
+	ExpectedVersion                                        int64
+	JSON                                                   bool
+	Out, Err                                               io.Writer
+	PollInterval                                           time.Duration
+	timeout                                                time.Duration
+	store                                                  passoauth.Store
+	now                                                    func() time.Time
+	httpClient                                             *http.Client
 }
 type Result struct {
 	SchemaVersion   int             `json:"schemaVersion"`
@@ -48,6 +48,7 @@ type Result struct {
 	Code            string          `json:"code,omitempty"`
 	ProjectID       int64           `json:"projectId,omitempty"`
 	VersionID       string          `json:"versionId,omitempty"`
+	VersionLabel    string          `json:"versionLabel,omitempty"`
 	VersionSequence int64           `json:"versionSequence,omitempty"`
 	ReleaseID       string          `json:"releaseId,omitempty"`
 	RunID           string          `json:"runId,omitempty"`
@@ -81,7 +82,7 @@ func New(opts Options) *cobra.Command {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	var profile, version, release, runID, environment, ledgerPath, evidenceDir string
+	var profile, version, versionLabel, release, runID, environment, ledgerPath, evidenceDir string
 	var project, expected, versionSequence int64
 	var asJSON bool
 	var timeout, poll time.Duration
@@ -92,6 +93,7 @@ func New(opts Options) *cobra.Command {
 	f.StringVar(&profile, "profile", "sandbox", "API profile")
 	f.Int64Var(&project, "project", 0, "project ID")
 	f.StringVar(&version, "version", "", "version ID")
+	f.StringVar(&versionLabel, "version-label", "", "version label (Git ref)")
 	f.Int64Var(&versionSequence, "version-sequence", 0, "numeric project version sequence")
 	f.StringVar(&release, "release", "", "release ID")
 	f.StringVar(&runID, "run", "", "run ID")
@@ -109,7 +111,7 @@ func New(opts Options) *cobra.Command {
 		if environment != "staging" && environment != "production" {
 			return nil, &ExitError{20, "invalid_environment"}
 		}
-		return buildRuntime(cmd, Options{Out: opts.Out, Err: opts.Err, Store: opts.Store, HTTPClient: opts.HTTPClient, Now: opts.Now}, profile, project, version, versionSequence, release, runID, environment, expected, ledgerPath, evidenceDir, asJSON, poll, timeout)
+		return buildRuntime(cmd, Options{Out: opts.Out, Err: opts.Err, Store: opts.Store, HTTPClient: opts.HTTPClient, Now: opts.Now}, profile, project, version, versionLabel, versionSequence, release, runID, environment, expected, ledgerPath, evidenceDir, asJSON, poll, timeout)
 	}
 	root.AddCommand(newAuthCommands(runtimeFor)...)
 	root.AddCommand(newDesignCommands(runtimeFor)...)
@@ -139,9 +141,12 @@ func New(opts Options) *cobra.Command {
 	root.AddCommand(newDoctorCommand(&profile, &ledgerPath, &project, &asJSON, os.UserHomeDir))
 	return root
 }
-func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64, version string, versionSequence int64, release, runID, environment string, expected int64, ledgerPath, evidenceDir string, asJSON bool, poll, timeout time.Duration) (*Runtime, error) {
+func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64, version, versionLabel string, versionSequence int64, release, runID, environment string, expected int64, ledgerPath, evidenceDir string, asJSON bool, poll, timeout time.Duration) (*Runtime, error) {
 	if versionSequence < 0 {
 		return nil, &ExitError{20, "invalid_version_sequence"}
+	}
+	if versionLabel != "" && !passostate.ValidVersionLabel(versionLabel) {
+		return nil, &ExitError{20, "invalid_version_label"}
 	}
 	p, err := passoauth.ResolveProfile(profile)
 	if err != nil {
@@ -163,11 +168,18 @@ func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64,
 	if project < 0 {
 		return nil, &ExitError{20, "invalid_project"}
 	}
-	if (version != "" && ledger.VersionID != "" && version != ledger.VersionID) || (versionSequence > 0 && ledger.VersionSequence > 0 && versionSequence != ledger.VersionSequence) || (release != "" && ledger.ReleaseID != "" && release != ledger.ReleaseID) || (runID != "" && ledger.RunID != "" && runID != ledger.RunID) {
+	if (version != "" && ledger.VersionID != "" && version != ledger.VersionID) ||
+		(versionLabel != "" && ledger.VersionLabel != "" && versionLabel != ledger.VersionLabel) ||
+		(versionSequence > 0 && ledger.VersionSequence > 0 && versionSequence != ledger.VersionSequence) ||
+		(release != "" && ledger.ReleaseID != "" && release != ledger.ReleaseID) ||
+		(runID != "" && ledger.RunID != "" && runID != ledger.RunID) {
 		return nil, &ExitError{20, "scope_mismatch"}
 	}
 	if version == "" {
 		version = ledger.VersionID
+	}
+	if versionLabel == "" {
+		versionLabel = ledger.VersionLabel
 	}
 	if versionSequence == 0 {
 		versionSequence = ledger.VersionSequence
@@ -207,7 +219,7 @@ func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64,
 	if opts.HTTPClient != nil {
 		client.HTTPClient = opts.HTTPClient
 	}
-	return &Runtime{Profile: p, Client: client, Ledger: ledger, LedgerPath: ledgerPath, EvidenceDir: evidenceDir, ProjectID: project, VersionID: version, VersionSequence: versionSequence, ReleaseID: release, RunID: runID, Environment: environment, ExpectedVersion: expected, JSON: asJSON, Out: opts.Out, Err: opts.Err, PollInterval: poll, timeout: timeout, store: store, now: now, httpClient: opts.HTTPClient}, nil
+	return &Runtime{Profile: p, Client: client, Ledger: ledger, LedgerPath: ledgerPath, EvidenceDir: evidenceDir, ProjectID: project, VersionID: version, VersionLabel: versionLabel, VersionSequence: versionSequence, ReleaseID: release, RunID: runID, Environment: environment, ExpectedVersion: expected, JSON: asJSON, Out: opts.Out, Err: opts.Err, PollInterval: poll, timeout: timeout, store: store, now: now, httpClient: opts.HTTPClient}, nil
 }
 func (r *Runtime) Emit(v Result) error {
 	v.SchemaVersion = 1
@@ -215,6 +227,9 @@ func (r *Runtime) Emit(v Result) error {
 	v.ProjectID = r.ProjectID
 	if v.VersionID == "" {
 		v.VersionID = r.VersionID
+	}
+	if v.VersionLabel == "" {
+		v.VersionLabel = r.VersionLabel
 	}
 	if v.VersionSequence == 0 {
 		v.VersionSequence = r.VersionSequence
