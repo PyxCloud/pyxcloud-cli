@@ -163,11 +163,20 @@ For CI/CD (non-interactive), use --token with a Keycloak JWT or offline token:
   pyxcloud auth login --token <jwt_or_refresh_token>`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		token, _ := cmd.Flags().GetString("token")
+		device, _ := cmd.Flags().GetBool("device")
 		backendURL, _ := cmd.Flags().GetString("url")
 		if backendURL == "" {
 			backendURL = "https://beta-api.pyxcloud.io"
 		}
+		if err := requireProfile(); err != nil {
+			return err
+		}
 
+		if device {
+			authURL, _ := cmd.Flags().GetString("auth-url")
+			clientID, _ := cmd.Flags().GetString("client-id")
+			return deviceLogin(authURL, clientID, backendURL)
+		}
 		if token != "" {
 			return loginWithToken(token, backendURL)
 		}
@@ -188,7 +197,7 @@ func loginWithToken(token, backendURL string) error {
 		// Direct JWT access token mode
 		cfg.Token = token
 	}
-	if err := config.Save(cfg); err != nil {
+	if err := config.SaveProfile(profile, cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 	fmt.Println("Authenticated with token.")
@@ -308,7 +317,7 @@ func loginWithBrowser(cmd *cobra.Command, backendURL string) error {
 		AuthURL:      authURL,
 		ClientID:     clientID,
 	}
-	if err := config.Save(cfg); err != nil {
+	if err := config.SaveProfile(profile, cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)
 	}
 
@@ -358,7 +367,7 @@ var logoutCmd = &cobra.Command{
 	Use:   "logout",
 	Short: "Remove stored credentials",
 	RunE: func(cmd *cobra.Command, args []string) error {
-		if err := config.Save(&config.Config{}); err != nil {
+		if err := config.SaveProfile(profile, &config.Config{}); err != nil {
 			return err
 		}
 		fmt.Println("Logged out.")
@@ -412,6 +421,7 @@ func openBrowser(u string) error {
 
 func init() {
 	loginCmd.Flags().String("token", "", "JWT or offline token for CI/CD (non-interactive, skips browser)")
+	loginCmd.Flags().Bool("device", false, "Device authorization grant (RFC 8628): for machines without a local browser callback")
 	loginCmd.Flags().String("url", "https://beta-api.pyxcloud.io", "PyxCloud API URL")
 	loginCmd.Flags().String("auth-url", "https://beta-auth.pyxcloud.io/realms/pyx", "Keycloak realm URL")
 	loginCmd.Flags().String("client-id", "pyxcloud-cli", "OAuth2 client ID")
