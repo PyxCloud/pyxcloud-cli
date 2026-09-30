@@ -251,7 +251,7 @@ class Harness:
         self.outcomes["fixtureContentSha256"] = digest
         self.outcomes["fixtureDocumentFileName"] = filename
         self.outcomes["fixtureDocumentSizeBytes"] = size
-        self.outcomes["fixtureSourceLabel"] = "user_acceptance_fixture_not_repository_proof"
+        self.outcomes["fixtureDocumentSourceLabel"] = "user_acceptance_fixture_not_repository_proof"
         return str(doc["id"])
 
     def discover(self):

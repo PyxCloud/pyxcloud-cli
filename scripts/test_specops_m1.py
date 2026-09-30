@@ -1,4 +1,6 @@
 import importlib.util
+import hashlib
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -61,6 +63,24 @@ class FixtureSelectionTests(unittest.TestCase):
         for bad in (rows + rows, [{**rows[0], "sizeBytes": 11}], [{**rows[0], "status": "FAILED"}]):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 m1.unique_fixture_document(bad, "specops-acceptance.md", 10)
+
+    def test_acceptance_fixture_label_is_separate_from_repository_source_provenance(self):
+        with tempfile.TemporaryDirectory() as td:
+            fixture = Path(td) / "acceptance.md"
+            fixture.write_text("owner accepted behavior")
+            digest = hashlib.sha256(fixture.read_bytes()).hexdigest()
+            size = fixture.stat().st_size
+            harness = m1.Harness.__new__(m1.Harness)
+            harness.project_id = "1"
+            harness.outcomes = {"fixtureSourceLabel": "fixture_source_not_repository_proof"}
+            filename = f"specops-acceptance-{digest[:16]}.md"
+            harness.public_json = lambda method, url, **kwargs: {
+                "documents": [{"id": "doc-1", "fileName": filename, "sizeBytes": size, "status": "READY"}]}
+            self.assertEqual(harness.ensure_fixture_document(fixture), "doc-1")
+            self.assertEqual(harness.outcomes["fixtureSourceLabel"], "fixture_source_not_repository_proof")
+            self.assertEqual(harness.outcomes["fixtureDocumentSourceLabel"],
+                             "user_acceptance_fixture_not_repository_proof")
+            self.assertEqual(harness.outcomes["fixtureContentSha256"], digest)
 
     def test_compile_body_leaves_idempotency_key_to_cli(self):
         self.assertEqual(m1.compile_input("doc-1"), {"documentIds": ["doc-1"]})
