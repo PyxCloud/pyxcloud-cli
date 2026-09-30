@@ -1,0 +1,278 @@
+package passocli
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/pyxcloud/pyxcloud-cli/internal/passoauth"
+	"github.com/pyxcloud/pyxcloud-cli/internal/passostate"
+	"github.com/pyxcloud/pyxcloud-cli/internal/passotransport"
+	"github.com/spf13/cobra"
+)
+
+type Options struct {
+	Out, Err   io.Writer
+	Store      passoauth.Store
+	HTTPClient *http.Client
+	Now        func() time.Time
+}
+type Runtime struct {
+	Profile                                  passoauth.Profile
+	Client                                   *passotransport.Client
+	Ledger                                   passostate.Ledger
+	LedgerPath, EvidenceDir                  string
+	ProjectID                                int64
+	VersionID, ReleaseID, RunID, Environment string
+	ExpectedVersion                          int64
+	JSON                                     bool
+	Out, Err                                 io.Writer
+	PollInterval                             time.Duration
+	timeout                                  time.Duration
+	store                                    passoauth.Store
+	now                                      func() time.Time
+	httpClient                               *http.Client
+}
+type Result struct {
+	SchemaVersion int             `json:"schemaVersion"`
+	Profile       string          `json:"profile,omitempty"`
+	Stage         string          `json:"stage,omitempty"`
+	Status        string          `json:"status,omitempty"`
+	Code          string          `json:"code,omitempty"`
+	ProjectID     int64           `json:"projectId,omitempty"`
+	VersionID     string          `json:"versionId,omitempty"`
+	ReleaseID     string          `json:"releaseId,omitempty"`
+	RunID         string          `json:"runId,omitempty"`
+	NextAction    any             `json:"nextAction,omitempty"`
+	Data          json.RawMessage `json:"data,omitempty"`
+	Evidence      []string        `json:"evidence,omitempty"`
+}
+type ExitError struct {
+	ExitCode int
+	Code     string
+}
+
+func (e *ExitError) Error() string { return e.Code }
+func ExitCode(err error) int {
+	var e *ExitError
+	if errors.As(err, &e) {
+		return e.ExitCode
+	}
+	return 20
+}
+func New(opts Options) *cobra.Command {
+	if opts.Out == nil {
+		opts.Out = os.Stdout
+	}
+	if opts.Err == nil {
+		opts.Err = os.Stderr
+	}
+	if opts.Store == nil {
+		opts.Store = passoauth.NewKeychainStore()
+	}
+	if opts.Now == nil {
+		opts.Now = time.Now
+	}
+	var profile, version, release, runID, environment, ledgerPath, evidenceDir string
+	var project, expected int64
+	var asJSON bool
+	var timeout, poll time.Duration
+	root := &cobra.Command{Use: "passo", SilenceErrors: true, SilenceUsage: true, Args: cobra.NoArgs, RunE: func(*cobra.Command, []string) error { return &ExitError{20, "command_required"} }}
+	root.SetOut(opts.Out)
+	root.SetErr(opts.Err)
+	f := root.PersistentFlags()
+	f.StringVar(&profile, "profile", "sandbox", "API profile")
+	f.Int64Var(&project, "project", 0, "project ID")
+	f.StringVar(&version, "version", "", "version ID")
+	f.StringVar(&release, "release", "", "release ID")
+	f.StringVar(&runID, "run", "", "run ID")
+	f.StringVar(&environment, "environment", "staging", "deployment environment")
+	f.Int64Var(&expected, "expected-version", 0, "expected version")
+	f.StringVar(&ledgerPath, "ledger", ".passo/run.json", "workflow ledger")
+	f.StringVar(&evidenceDir, "evidence-dir", ".passo/evidence", "evidence directory")
+	f.BoolVar(&asJSON, "json", false, "emit JSON")
+	f.DurationVar(&timeout, "timeout", 2*time.Minute, "command timeout")
+	f.DurationVar(&poll, "poll-interval", time.Second, "poll interval")
+	runtimeFor := func(cmd *cobra.Command) (*Runtime, error) {
+		if timeout <= 0 || poll <= 0 {
+			return nil, &ExitError{20, "invalid_duration"}
+		}
+		if environment != "staging" && environment != "production" {
+			return nil, &ExitError{20, "invalid_environment"}
+		}
+		return buildRuntime(cmd, Options{Out: opts.Out, Err: opts.Err, Store: opts.Store, HTTPClient: opts.HTTPClient, Now: opts.Now}, profile, project, version, release, runID, environment, expected, ledgerPath, evidenceDir, asJSON, poll, timeout)
+	}
+	root.AddCommand(newAuthCommands(runtimeFor)...)
+	root.AddCommand(&cobra.Command{Use: "status", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		r, e := runtimeFor(cmd)
+		if e != nil {
+			return e
+		}
+		return r.status(cmd.Context())
+	}})
+	root.AddCommand(&cobra.Command{Use: "monitor", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		r, e := runtimeFor(cmd)
+		if e != nil {
+			return e
+		}
+		return r.monitor(cmd.Context())
+	}})
+	return root
+}
+func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64, version, release, runID, environment string, expected int64, ledgerPath, evidenceDir string, asJSON bool, poll, timeout time.Duration) (*Runtime, error) {
+	p, err := passoauth.ResolveProfile(profile)
+	if err != nil {
+		return nil, &ExitError{20, "invalid_profile"}
+	}
+	ledger, err := passostate.Load(ledgerPath)
+	if err != nil {
+		return nil, &ExitError{20, "invalid_ledger"}
+	}
+	if ledger.Profile != "" && ledger.Profile != profile {
+		return nil, &ExitError{20, "scope_mismatch"}
+	}
+	if ledger.ProjectID > 0 && project > 0 && ledger.ProjectID != project {
+		return nil, &ExitError{20, "scope_mismatch"}
+	}
+	if project == 0 {
+		project = ledger.ProjectID
+	}
+	if project < 0 {
+		return nil, &ExitError{20, "invalid_project"}
+	}
+	if version == "" {
+		version = ledger.VersionID
+	}
+	if release == "" {
+		release = ledger.ReleaseID
+	}
+	if runID == "" {
+		runID = ledger.RunID
+	}
+	now := opts.Now
+	store := opts.Store
+	access := func(ctx context.Context) (string, error) {
+		if env := os.Getenv("PASSO_ACCESS_TOKEN"); env != "" {
+			return env, nil
+		}
+		tok, e := store.Load(profile)
+		if e != nil {
+			return "", e
+		}
+		if tok.ExpiresAt.After(now().Add(30 * time.Second)) {
+			return tok.AccessToken, nil
+		}
+		if tok.RefreshToken == "" {
+			return "", errors.New("credentials unavailable")
+		}
+		fresh, e := (&passoauth.OAuth{Profile: p, HTTPClient: opts.HTTPClient}).Refresh(ctx, tok.RefreshToken)
+		if e != nil {
+			return "", e
+		}
+		if e = store.Save(profile, fresh); e != nil {
+			return "", e
+		}
+		return fresh.AccessToken, nil
+	}
+	client := passotransport.New(p.APIURL, access)
+	if opts.HTTPClient != nil {
+		client.HTTPClient = opts.HTTPClient
+	}
+	return &Runtime{Profile: p, Client: client, Ledger: ledger, LedgerPath: ledgerPath, EvidenceDir: evidenceDir, ProjectID: project, VersionID: version, ReleaseID: release, RunID: runID, Environment: environment, ExpectedVersion: expected, JSON: asJSON, Out: opts.Out, Err: opts.Err, PollInterval: poll, timeout: timeout, store: store, now: now, httpClient: opts.HTTPClient}, nil
+}
+func (r *Runtime) Emit(v Result) error {
+	v.SchemaVersion = 1
+	v.Profile = r.Profile.Name
+	v.ProjectID = r.ProjectID
+	if v.VersionID == "" {
+		v.VersionID = r.VersionID
+	}
+	if v.ReleaseID == "" {
+		v.ReleaseID = r.ReleaseID
+	}
+	if v.RunID == "" {
+		v.RunID = r.RunID
+	}
+	if r.JSON {
+		return json.NewEncoder(r.Out).Encode(v)
+	}
+	lines := []string{}
+	if v.Status != "" {
+		lines = append(lines, "Status: "+v.Status)
+	}
+	if v.Stage != "" {
+		lines = append(lines, "Stage: "+v.Stage)
+	}
+	if v.Code != "" {
+		lines = append(lines, "Code: "+v.Code)
+	}
+	if len(lines) == 0 {
+		lines = append(lines, "OK")
+	}
+	if len(lines) > 8 {
+		lines = lines[:8]
+	}
+	_, e := fmt.Fprintln(r.Out, strings.Join(lines, "\n"))
+	return e
+}
+func (r *Runtime) status(ctx context.Context) error {
+	if r.ProjectID <= 0 {
+		return &ExitError{20, "project_required"}
+	}
+	ctx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+	resp, err := r.Client.Do(ctx, http.MethodGet, fmt.Sprintf("/vibe/projects/%d/journey", r.ProjectID), nil, "")
+	if err != nil {
+		return classify(err)
+	}
+	var envelope struct {
+		Data struct {
+			Stage         string          `json:"stage"`
+			PrimaryAction json.RawMessage `json:"primaryAction"`
+		} `json:"data"`
+	}
+	_ = json.Unmarshal(resp.Body, &envelope)
+	return r.Emit(Result{Stage: envelope.Data.Stage, Status: "observed", NextAction: json.RawMessage(envelope.Data.PrimaryAction), Data: resp.Body})
+}
+func (r *Runtime) monitor(ctx context.Context) error {
+	deadline, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+	for {
+		if err := r.status(deadline); err != nil {
+			return err
+		}
+		timer := time.NewTimer(r.PollInterval)
+		select {
+		case <-deadline.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
+	}
+}
+func classify(err error) error {
+	var api *passotransport.APIError
+	if errors.As(err, &api) {
+		c := api.Code
+		if c == "not_human" || c == "step_up_required" {
+			return &ExitError{10, c}
+		}
+		if api.StatusCode == 503 || strings.HasSuffix(c, "_unwired") || strings.HasSuffix(c, "_unavailable") {
+			return &ExitError{30, c}
+		}
+		return &ExitError{20, c}
+	}
+	if errors.Is(err, context.Canceled) {
+		return &ExitError{20, "canceled"}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return &ExitError{20, "timeout"}
+	}
+	return &ExitError{20, "request_failed"}
+}
