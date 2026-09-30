@@ -3,6 +3,7 @@ package passocli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -81,6 +82,10 @@ func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Opt
 	}
 	jsonMode, _ := cmd.PersistentFlags().GetBool("json")
 	if jsonMode {
+		var emitted *outputWrittenError
+		if errors.As(err, &emitted) {
+			return code
+		}
 		if _, ok := err.(*ExitError); !ok {
 			msg = "command_failed"
 		}

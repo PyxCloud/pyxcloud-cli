@@ -62,6 +62,14 @@ type ExitError struct {
 }
 
 func (e *ExitError) Error() string { return e.Code }
+
+// outputWrittenError identifies command failures whose structured output was
+// already emitted by the command itself (for example, a doctor report).
+type outputWrittenError struct{ err error }
+
+func (e *outputWrittenError) Error() string { return e.err.Error() }
+func (e *outputWrittenError) Unwrap() error { return e.err }
+
 func ExitCode(err error) int {
 	var e *ExitError
 	if errors.As(err, &e) {

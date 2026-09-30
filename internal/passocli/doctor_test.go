@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -41,6 +42,46 @@ func TestDoctorJSONIsLocalAndReportsOptionalSetup(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "clientID") || strings.Contains(out.String(), "token") || strings.Contains(out.String(), home) || strings.Contains(out.String(), ledger) {
 		t.Fatalf("report exposed sensitive data: %s", out.String())
+	}
+}
+
+func TestExecuteDoctorJSONErrorsEmitExactlyOneReport(t *testing.T) {
+	t.Setenv("PASSO_API_URL", "https://api.example.test/v1")
+	t.Setenv("PASSO_ISSUER_URL", "https://login.example.test/issuer")
+	t.Setenv("HOME", t.TempDir())
+	malformed := filepath.Join(t.TempDir(), "invalid-ledger.json")
+	if err := os.WriteFile(malformed, []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(t.TempDir(), "missing-ledger.json")
+	for _, tc := range []struct {
+		name string
+		args []string
+		code string
+	}{{"profile", []string{"--profile", "not-a-profile", "--json", "doctor"}, "invalid_profile"},
+		{"project", []string{"--project", "-1", "--ledger", missing, "--json", "doctor"}, "scope_mismatch"},
+		{"ledger", []string{"--ledger", malformed, "--json", "doctor"}, "invalid_ledger"}} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out, errOut bytes.Buffer
+			if code := Execute(context.Background(), tc.args, &out, &errOut); code != 20 {
+				t.Fatalf("exit code = %d, want 20; stderr=%q", code, errOut.String())
+			}
+			decoder := json.NewDecoder(&out)
+			var report doctorReport
+			if err := decoder.Decode(&report); err != nil {
+				t.Fatalf("decode report: %v; stdout=%q", err, out.String())
+			}
+			var extra any
+			if err := decoder.Decode(&extra); err != io.EOF {
+				t.Fatalf("expected exactly one JSON object, trailing decode=%v value=%#v output=%q", err, extra, out.String())
+			}
+			if report.Status != "error" || report.Error != tc.code {
+				t.Fatalf("report status/error = %q/%q, want error/%q", report.Status, report.Error, tc.code)
+			}
+			if errOut.Len() != 0 {
+				t.Fatalf("unexpected stderr: %q", errOut.String())
+			}
+		})
 	}
 }
 

@@ -53,7 +53,7 @@ func newDoctorCommand(profile, ledgerPath *string, project *int64, asJSON *bool,
 				}
 			}
 			if code != "" {
-				return &ExitError{20, code}
+				return &outputWrittenError{err: &ExitError{20, code}}
 			}
 			return nil
 		},
