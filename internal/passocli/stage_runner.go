@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/pyxcloud/pyxcloud-cli/internal/passocontract"
@@ -59,6 +60,9 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 	op, ok := passocontract.Operations[operationKey]
 	if !ok {
 		return empty, &ExitError{20, "unknown_operation"}
+	}
+	if !r.matchesScope(op, params) {
+		return empty, &ExitError{20, "scope_mismatch"}
 	}
 	var bodyObject map[string]json.RawMessage
 	if len(bytes.TrimSpace(input)) > 0 {
@@ -184,6 +188,25 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 		resultStatus = "accepted"
 	}
 	return Result{Stage: stage, Status: resultStatus, ProjectID: r.ProjectID, VersionID: r.VersionID, ReleaseID: r.ReleaseID, RunID: r.RunID, Data: resp.Body, Evidence: evidencePaths(path)}, nil
+}
+
+func (r *Runtime) matchesScope(op passocontract.Operation, params map[string]string) bool {
+	projectParam := "projectId"
+	if op.Contract == "vibe-docs-boardos" {
+		projectParam = "id"
+	}
+	if value, ok := params[projectParam]; ok {
+		id, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || id != r.ProjectID {
+			return false
+		}
+	}
+	for _, scope := range []struct{ key, value string }{{"versionId", r.VersionID}, {"releaseId", r.ReleaseID}, {"runId", r.RunID}} {
+		if expected, ok := params[scope.key]; ok && scope.value != "" && expected != scope.value {
+			return false
+		}
+	}
+	return true
 }
 
 func evidencePaths(path string) []string {

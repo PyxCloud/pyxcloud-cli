@@ -69,15 +69,63 @@ func TestPerformStableKeyIncludesPathParamsAnd202IsAccepted(t *testing.T) {
 		w.WriteHeader(202)
 	}))
 	defer srv.Close()
-	for _, project := range []string{"7", "8"} {
+	for _, queryValue := range []string{"first", "second"} {
 		r := testRunner(t, srv, t.TempDir())
-		_, err := r.Perform(context.Background(), "advance", "projects:projectStateAdvance", map[string]string{"projectId": project}, nil, nil, false)
+		_, err := r.Perform(context.Background(), "advance", "projects:projectStateAdvance", map[string]string{"projectId": "42"}, url.Values{"mode": {queryValue}}, nil, false)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
 	if len(keys) != 2 || keys[0] == keys[1] {
 		t.Fatalf("keys %v", keys)
+	}
+}
+
+func TestPerformNestedObjectKeyOrderHasStableIdempotency(t *testing.T) {
+	var keys []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+	r := testRunner(t, srv, t.TempDir())
+	for _, body := range []string{`{"outer":{"a":1,"b":{"c":2,"d":3}}}`, `{"outer":{"b":{"d":3,"c":2},"a":1}}`} {
+		if _, err := r.Perform(context.Background(), "write", "projects:projectStateAdvance", map[string]string{"projectId": "42"}, nil, json.RawMessage(body), false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(keys) != 2 || keys[0] == "" || keys[0] != keys[1] {
+		t.Fatalf("nested JSON key order changed idempotency key: %v", keys)
+	}
+}
+
+func TestPerformRejectsScopeMismatchBeforeLedgerOrNetwork(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; _, _ = io.WriteString(w, `{}`) }))
+	defer srv.Close()
+	dir := t.TempDir()
+	r := testRunner(t, srv, dir)
+	r.VersionID = "v-current"
+	cases := []struct {
+		operation string
+		params    map[string]string
+	}{
+		{"projects:projectStateRead", map[string]string{"projectId": "43"}},
+		{"securitygate:getSecurityGateEvaluation", map[string]string{"projectId": "42", "versionId": "v-other"}},
+		{"vibe-docs-boardos:listDecisions", map[string]string{"id": "43"}},
+	}
+	for _, tc := range cases {
+		_, err := r.Perform(context.Background(), "read", tc.operation, tc.params, nil, nil, false)
+		var exit *ExitError
+		if !errors.As(err, &exit) || exit.Code != "scope_mismatch" {
+			t.Fatalf("%s returned %v", tc.operation, err)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("made %d requests despite scope mismatch", calls)
+	}
+	if _, err := os.Stat(r.LedgerPath); !os.IsNotExist(err) {
+		t.Fatalf("scope mismatch created ledger: %v", err)
 	}
 }
 
