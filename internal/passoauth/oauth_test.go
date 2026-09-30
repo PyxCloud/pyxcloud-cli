@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -71,8 +72,53 @@ func TestBeginDeviceAndRefresh(t *testing.T) {
 		t.Fatalf("auth=%+v err=%v", auth, err)
 	}
 	tok, err := o.Refresh(context.Background(), "secret")
-	if err != nil || tok.AccessToken != "new" {
+	if err != nil || tok.AccessToken != "new" || tok.RefreshToken != "secret" {
 		t.Fatalf("token=%+v err=%v", tok, err)
+	}
+}
+
+func TestInjectedRedirectPolicyCannotRedirectTokenRequest(t *testing.T) {
+	var targetCalls int
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		targetCalls++
+		_, _ = w.Write([]byte(`{"access_token":"wrong","expires_in":60}`))
+	}))
+	defer target.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer origin.Close()
+	o := testOAuth(origin)
+	o.HTTPClient.CheckRedirect = func(*http.Request, []*http.Request) error { return nil }
+	if _, err := o.Refresh(context.Background(), "refresh"); err == nil {
+		t.Fatal("expected redirected token request to fail")
+	}
+	if targetCalls != 0 {
+		t.Fatalf("redirect target received %d requests", targetCalls)
+	}
+}
+
+func TestCompleteDeviceCancellationAndWaitBound(t *testing.T) {
+	var requests int
+	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { requests++ }))
+	defer s.Close()
+	o := testOAuth(s)
+	ctx, cancel := context.WithCancel(context.Background())
+	var requestedWait time.Duration
+	o.wait = func(waitCtx context.Context, d time.Duration) error {
+		requestedWait = d
+		cancel()
+		return waitCtx.Err()
+	}
+	_, err := o.CompleteDevice(ctx, DeviceAuthorization{DeviceCode: "dev", ExpiresIn: 10, Interval: 60})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context canceled", err)
+	}
+	if requestedWait <= 0 || requestedWait > 10*time.Second {
+		t.Fatalf("wait = %v, want at most device expiry", requestedWait)
+	}
+	if requests != 0 {
+		t.Fatalf("made %d token requests after cancellation", requests)
 	}
 }
 
@@ -183,5 +229,18 @@ func TestTokenExpiresAtUsesExpiresIn(t *testing.T) {
 	}
 	if token.ExpiresAt.Before(before.Add(29 * time.Second)) {
 		t.Fatalf("expiry=%v", token.ExpiresAt)
+	}
+}
+
+func TestTokenResponseRequiresPositiveExpiry(t *testing.T) {
+	for _, expiry := range []int{0, -1} {
+		s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte(`{"access_token":"a","expires_in":` + fmt.Sprint(expiry) + `}`))
+		}))
+		_, err := testOAuth(s).Refresh(context.Background(), "r")
+		s.Close()
+		if err == nil || !strings.Contains(err.Error(), "valid expiry") {
+			t.Fatalf("expiry %d: error = %v", expiry, err)
+		}
 	}
 }

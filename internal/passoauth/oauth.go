@@ -43,9 +43,7 @@ func (o *OAuth) client() *http.Client {
 	if client.Timeout == 0 {
 		client.Timeout = 30 * time.Second
 	}
-	if client.CheckRedirect == nil {
-		client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	return &client
 }
 
@@ -98,6 +96,8 @@ func (o *OAuth) CompleteDevice(ctx context.Context, auth DeviceAuthorization) (T
 	if auth.DeviceCode == "" || auth.ExpiresIn <= 0 {
 		return Token{}, errors.New("invalid device authorization")
 	}
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(auth.ExpiresIn)*time.Second)
+	defer cancel()
 	endpoint, err := o.endpoint("token")
 	if err != nil {
 		return Token{}, err
@@ -106,16 +106,20 @@ func (o *OAuth) CompleteDevice(ctx context.Context, auth DeviceAuthorization) (T
 	if interval <= 0 {
 		interval = 5
 	}
-	deadline := time.Now().Add(time.Duration(auth.ExpiresIn) * time.Second)
 	for {
-		if time.Until(deadline) <= 0 {
-			return Token{}, errors.New("device authorization expired")
+		remaining, _ := ctx.Deadline()
+		wait := time.Duration(interval) * time.Second
+		if time.Until(remaining) < wait {
+			wait = time.Until(remaining)
 		}
-		if err := o.waitFor(ctx, time.Duration(interval)*time.Second); err != nil {
+		if wait <= 0 {
+			return Token{}, ctx.Err()
+		}
+		if err := o.waitFor(ctx, wait); err != nil {
 			return Token{}, err
 		}
-		if time.Until(deadline) <= 0 {
-			return Token{}, errors.New("device authorization expired")
+		if err := ctx.Err(); err != nil {
+			return Token{}, err
 		}
 		values := url.Values{"grant_type": {"urn:ietf:params:oauth:grant-type:device_code"}, "client_id": {o.Profile.ClientID}, "device_code": {auth.DeviceCode}}
 		token, status, code, err := o.tokenRequest(ctx, endpoint, values)
@@ -149,6 +153,9 @@ func (o *OAuth) Refresh(ctx context.Context, refreshToken string) (Token, error)
 	}
 	values := url.Values{"grant_type": {"refresh_token"}, "client_id": {o.Profile.ClientID}, "refresh_token": {refreshToken}}
 	token, _, _, err := o.tokenRequest(ctx, endpoint, values)
+	if err == nil && token.RefreshToken == "" {
+		token.RefreshToken = refreshToken
+	}
 	return token, err
 }
 
@@ -274,6 +281,9 @@ func (o *OAuth) tokenRequest(ctx context.Context, endpoint string, values url.Va
 	}
 	if raw.AccessToken == "" {
 		return Token{}, resp.StatusCode, "", errors.New("token response did not contain an access token")
+	}
+	if raw.ExpiresIn <= 0 {
+		return Token{}, resp.StatusCode, "", errors.New("token response did not contain a valid expiry")
 	}
 	return Token{AccessToken: raw.AccessToken, RefreshToken: raw.RefreshToken, ExpiresAt: time.Now().Add(time.Duration(raw.ExpiresIn) * time.Second)}, resp.StatusCode, "", nil
 }
