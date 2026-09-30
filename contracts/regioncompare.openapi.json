@@ -1,0 +1,545 @@
+{
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "error": {
+            "description": "stable typed error code (REGIONCMP-*)",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Candidate": {
+        "properties": {
+          "candidateId": {
+            "type": "string"
+          },
+          "deploymentRegionId": {
+            "description": "literal region leaf identifier; never resolved or defaulted",
+            "type": "string"
+          },
+          "partial": {
+            "description": "incomplete pricing coverage; rendered, unselectable",
+            "type": "boolean"
+          },
+          "prices": {
+            "items": {
+              "$ref": "#/components/schemas/PricePoint"
+            },
+            "type": "array"
+          },
+          "provider": {
+            "description": "literal CSP identifier; never resolved or defaulted",
+            "type": "string"
+          },
+          "unpriced": {
+            "description": "no price available; rendered, unselectable",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Evaluation": {
+        "properties": {
+          "candidates": {
+            "description": "1..24 candidates",
+            "items": {
+              "$ref": "#/components/schemas/Candidate"
+            },
+            "type": "array"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "freshness": {
+            "enum": [
+              "FRESH",
+              "STALE",
+              "DEGRADED"
+            ],
+            "type": "string"
+          },
+          "objective": {
+            "enum": [
+              "LOWEST_COST",
+              "BALANCED"
+            ],
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "recommendedCandidateId": {
+            "description": "backend-owned cloudranker recommendation over the served candidates; absent when none (never submitted by the client)",
+            "type": "string"
+          },
+          "regionTree": {
+            "items": {
+              "$ref": "#/components/schemas/RegionTreeNode"
+            },
+            "type": "array"
+          },
+          "versionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "versionState": {
+            "description": "FROZEN_COMPLETE is the selection prerequisite",
+            "enum": [
+              "DRAFT",
+              "FROZEN_COMPLETE",
+              "ARCHIVED"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PricePoint": {
+        "properties": {
+          "amount": {
+            "description": "absent means missing price, never zero; zero is a real price",
+            "type": "number"
+          },
+          "basis": {
+            "description": "price source provenance; every number carries a source",
+            "type": "string"
+          },
+          "componentKey": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "period": {
+            "enum": [
+              "MONTHLY",
+              "HOURLY"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RegionTreeNode": {
+        "properties": {
+          "id": {
+            "description": "region id for REGION leaves, group key for GROUP nodes",
+            "type": "string"
+          },
+          "kind": {
+            "description": "only REGION is selectable",
+            "enum": [
+              "GROUP",
+              "REGION"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "parentId": {
+            "description": "empty for root nodes",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SelectionCommand": {
+        "description": "the closed pin set: exactly deploymentRegionId, evaluationId and candidateId, nothing else",
+        "properties": {
+          "candidateId": {
+            "type": "string"
+          },
+          "deploymentRegionId": {
+            "type": "string"
+          },
+          "evaluationId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "SelectionResult": {
+        "properties": {
+          "candidateId": {
+            "type": "string"
+          },
+          "deploymentRegionId": {
+            "type": "string"
+          },
+          "evaluationId": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "provider": {
+            "description": "echoed from the selected candidate by the backend; never submitted",
+            "type": "string"
+          },
+          "selectedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "selectionId": {
+            "type": "string"
+          },
+          "versionId": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "REST face of the Region Compare aggregate (epic #1405). The compare page serves a region tree and provider × region candidates for a FROZEN_COMPLETE project version; the user selects exactly one candidate by pinning deploymentRegionId, evaluationId and candidateId. Missing prices are absent, never zero; partial and unpriced candidates are rendered but unselectable; there is no timing/performance signal anywhere on this surface and no provider/region fallback semantics.",
+    "title": "passo.build region compare API",
+    "version": "1.2.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/vibe/projects/{projectId}/versions/{versionId}/cloud/candidates/{candidateId}": {
+      "get": {
+        "operationId": "getCloudCandidate",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pinned project version; must be FROZEN_COMPLETE for selection",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "candidateId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Candidate"
+                  }
+                }
+              },
+              "description": "the candidate"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "candidate not found or foreign"
+            }
+          }
+        },
+        "summary": "One provider × region candidate with its price points (absent means missing, never zero)"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/cloud/compare": {
+      "get": {
+        "operationId": "getCloudComparison",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pinned project version; must be FROZEN_COMPLETE for selection",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Evaluation"
+                  }
+                }
+              },
+              "description": "the served evaluation"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "project or version not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "version not FROZEN_COMPLETE"
+            }
+          }
+        },
+        "summary": "The compare page read model: region tree, candidates, objective, prerequisite state"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/cloud/regions": {
+      "get": {
+        "operationId": "getRegionTree",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pinned project version; must be FROZEN_COMPLETE for selection",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/RegionTreeNode"
+                    },
+                    "type": "array"
+                  }
+                }
+              },
+              "description": "the region tree nodes"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "project or version not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "version not FROZEN_COMPLETE"
+            }
+          }
+        },
+        "summary": "The region tree: GROUP containers and selectable REGION leaves"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/cloud/selections": {
+      "post": {
+        "operationId": "createCloudSelection",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pinned project version; must be FROZEN_COMPLETE for selection",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectionCommand"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "201": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SelectionResult"
+                  }
+                }
+              },
+              "description": "selection published"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "project, version or candidate not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "version not FROZEN_COMPLETE / region not a leaf / candidate unselectable / price missing / evaluation stale / selection duplicate"
+            }
+          }
+        },
+        "summary": "Select one candidate; the command pins deploymentRegionId, evaluationId and candidateId only"
+      }
+    },
+    "/vibe/projects/{projectId}/versions/{versionId}/cloud/selections/{selectionId}": {
+      "get": {
+        "operationId": "getCloudSelection",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "pinned project version; must be FROZEN_COMPLETE for selection",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "selectionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SelectionResult"
+                  }
+                }
+              },
+              "description": "the published selection"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "selection not found or foreign"
+            }
+          }
+        },
+        "summary": "Re-read one published selection by id: provider and deployment region are echoed facts of the selected candidate, never re-derived"
+      }
+    }
+  }
+}

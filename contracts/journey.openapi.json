@@ -1,0 +1,734 @@
+{
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "error": {
+            "description": "stable typed error code (JOURNEY-*)",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ArchitectureFacts": {
+        "properties": {
+          "components": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "environments": {
+            "items": {
+              "enum": [
+                "production",
+                "staging"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "missingSecretKeys": {
+            "description": "keys only, never values",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "Blocker": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requiredAction": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BoardAgent": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BoardFacts": {
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/BoardAgent"
+            },
+            "type": "array"
+          },
+          "freezeAvailable": {
+            "type": "boolean"
+          },
+          "tasksByState": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "Capability": {
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "key": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CloudFacts": {
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "monthlyMinor": {
+            "description": "absent means no cloud selection yet, never zero",
+            "format": "int64",
+            "type": "integer"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "snapshotDate": {
+            "format": "date",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "DeploymentFacts": {
+        "properties": {
+          "buildJobState": {
+            "type": "string"
+          },
+          "latestRun": {
+            "$ref": "#/components/schemas/DeploymentRunSummary"
+          },
+          "previousReleaseStillLive": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "DeploymentRunSummary": {
+        "properties": {
+          "env": {
+            "enum": [
+              "production",
+              "staging"
+            ],
+            "type": "string"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/DeploymentStep"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "DeploymentStep": {
+        "properties": {
+          "key": {
+            "enum": [
+              "build",
+              "provision",
+              "deploy",
+              "health"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Facts": {
+        "properties": {
+          "architecture": {
+            "$ref": "#/components/schemas/ArchitectureFacts"
+          },
+          "board": {
+            "$ref": "#/components/schemas/BoardFacts"
+          },
+          "cloud": {
+            "$ref": "#/components/schemas/CloudFacts"
+          },
+          "deployment": {
+            "$ref": "#/components/schemas/DeploymentFacts"
+          },
+          "gate": {
+            "$ref": "#/components/schemas/GateFacts"
+          },
+          "live": {
+            "$ref": "#/components/schemas/LiveFacts"
+          },
+          "release": {
+            "$ref": "#/components/schemas/ReleaseFacts"
+          }
+        },
+        "type": "object"
+      },
+      "Freshness": {
+        "properties": {
+          "asOf": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sourceVersion": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "GateBlockerClass": {
+        "properties": {
+          "class": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          },
+          "taskIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "GateFacts": {
+        "properties": {
+          "blockersByClass": {
+            "items": {
+              "$ref": "#/components/schemas/GateBlockerClass"
+            },
+            "type": "array"
+          },
+          "notCheckedGaps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "notes": {
+            "items": {
+              "$ref": "#/components/schemas/GateNote"
+            },
+            "type": "array"
+          },
+          "pendingDecisions": {
+            "type": "integer"
+          },
+          "scanProgress": {
+            "items": {
+              "$ref": "#/components/schemas/ScanTargetProgress"
+            },
+            "type": "array"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "verdict": {
+            "description": "absent while the gate is still running",
+            "enum": [
+              "GO",
+              "GO_WITH_NOTES",
+              "NO_GO"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "GateNote": {
+        "properties": {
+          "expired": {
+            "type": "boolean"
+          },
+          "expiresAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "findingId": {
+            "type": "string"
+          },
+          "note": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "JourneyEnvelope": {
+        "properties": {
+          "blockers": {
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            },
+            "type": "array"
+          },
+          "capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            },
+            "type": "array"
+          },
+          "data": {
+            "$ref": "#/components/schemas/JourneyRead"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/Freshness"
+          },
+          "version": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "JourneyRead": {
+        "properties": {
+          "facts": {
+            "$ref": "#/components/schemas/Facts"
+          },
+          "needsYou": {
+            "items": {
+              "$ref": "#/components/schemas/NeedsYouItem"
+            },
+            "type": "array"
+          },
+          "primaryAction": {
+            "$ref": "#/components/schemas/PrimaryAction"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projection": {
+            "properties": {
+              "macro": {
+                "type": "string"
+              },
+              "micro": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "stage": {
+            "description": "closed 7-value vocabulary (spec §1.2)",
+            "enum": [
+              "pre_execution",
+              "board",
+              "gate",
+              "architecture",
+              "cloud",
+              "deploy",
+              "live"
+            ],
+            "type": "string"
+          },
+          "subState": {
+            "description": "closed 17-value vocabulary; absent for pre_execution and board",
+            "enum": [
+              "gate.running",
+              "gate.fixes_needed",
+              "gate.decisions_needed",
+              "gate.cleared",
+              "architecture.generating",
+              "architecture.ready",
+              "cloud.comparing",
+              "cloud.placed",
+              "deploy.building",
+              "deploy.provisioning",
+              "deploy.deploying",
+              "deploy.health",
+              "deploy.failed",
+              "live.up",
+              "live.slow",
+              "live.down",
+              "live.not_checked"
+            ],
+            "type": "string"
+          },
+          "version": {
+            "$ref": "#/components/schemas/VersionRef"
+          }
+        },
+        "type": "object"
+      },
+      "LiveEnvironment": {
+        "properties": {
+          "health": {
+            "$ref": "#/components/schemas/LiveHealth"
+          },
+          "kind": {
+            "enum": [
+              "production",
+              "staging"
+            ],
+            "type": "string"
+          },
+          "price": {
+            "$ref": "#/components/schemas/LivePrice"
+          },
+          "priceLabel": {
+            "description": "present only when price is absent and the reason is known",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "version": {
+            "$ref": "#/components/schemas/LiveVersion"
+          }
+        },
+        "type": "object"
+      },
+      "LiveFacts": {
+        "properties": {
+          "environments": {
+            "items": {
+              "$ref": "#/components/schemas/LiveEnvironment"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "LiveHealth": {
+        "properties": {
+          "downSince": {
+            "description": "present only when status is down and the down episode's start is known (X-03.2)",
+            "format": "date-time",
+            "type": "string"
+          },
+          "latencyMs": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "observedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "up",
+              "slow",
+              "down",
+              "not_checked"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "LivePrice": {
+        "properties": {
+          "alertLabel": {
+            "description": "present only when alertMinor is absent, saying why",
+            "type": "string"
+          },
+          "alertMinor": {
+            "description": "absent means no alert threshold set",
+            "format": "int64",
+            "type": "integer"
+          },
+          "alertUpdatedAt": {
+            "description": "when the alert threshold was last set; present exactly when alertMinor is (X-03.2)",
+            "format": "date-time",
+            "type": "string"
+          },
+          "monthToDateAsOf": {
+            "description": "last metered day monthToDateMinor covers (the oldest among the running resources); present only with it",
+            "format": "date",
+            "type": "string"
+          },
+          "monthToDateCurrency": {
+            "description": "currency of monthToDateMinor; present only with it",
+            "type": "string"
+          },
+          "monthToDateLabel": {
+            "description": "\"Estimated, as of \u003cdate\u003e\" with monthToDateMinor; why it is absent otherwise",
+            "type": "string"
+          },
+          "monthToDateMinor": {
+            "description": "absent means not yet metered, never zero",
+            "format": "int64",
+            "type": "integer"
+          },
+          "monthly": {
+            "$ref": "#/components/schemas/MonthlyPrice"
+          },
+          "snapshotDate": {
+            "description": "capture date of the catalogue snapshot the selection was priced against",
+            "format": "date",
+            "type": "string"
+          },
+          "sources": {
+            "description": "price source labels, verbatim from the compare read",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "LiveVersion": {
+        "properties": {
+          "commit": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "releasedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "MonthlyPrice": {
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "feeMinor": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "infraMinor": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "totalMinor": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "NeedsYouItem": {
+        "properties": {
+          "href": {
+            "type": "string"
+          },
+          "kind": {
+            "description": "closed vocabulary (spec §10.2)",
+            "enum": [
+              "gate_decision_needed",
+              "note_expired",
+              "secrets_missing",
+              "spend_alert_crossed",
+              "deploy_failed",
+              "health_down"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "since": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PrimaryAction": {
+        "properties": {
+          "allowed": {
+            "type": "boolean"
+          },
+          "href": {
+            "type": "string"
+          },
+          "key": {
+            "description": "closed vocabulary; backend-derived",
+            "enum": [
+              "continue_pre_execution",
+              "open_board",
+              "freeze",
+              "open_security_report",
+              "fix_on_board",
+              "design_architecture",
+              "choose_cloud",
+              "deploy",
+              "follow_deploy",
+              "retry_deploy",
+              "open_app"
+            ],
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "required when allowed=false",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ReleaseFacts": {
+        "properties": {
+          "sealed": {
+            "type": "boolean"
+          },
+          "state": {
+            "description": "passo_release.release.state (spec §3.5)",
+            "enum": [
+              "draft",
+              "gating",
+              "ready",
+              "deploying",
+              "deployed",
+              "failed",
+              "superseded",
+              "rolled_back"
+            ],
+            "type": "string"
+          },
+          "versionLabel": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ScanTargetProgress": {
+        "properties": {
+          "check": {
+            "type": "string"
+          },
+          "status": {
+            "description": "closed vocabulary",
+            "enum": [
+              "pending",
+              "running",
+              "done"
+            ],
+            "type": "string"
+          },
+          "target": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "VersionRef": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "lockedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "sequence": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "The single server answer for \"where is this version and what's next\" (spec §3.3). Every stage screen and Home read this instead of deriving state client-side. Served inside the shared apicontract envelope (data, capabilities, blockers, freshness, version).",
+    "title": "passo.build journey read API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/vibe/projects/{projectId}/journey": {
+      "get": {
+        "operationId": "getJourney",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JourneyEnvelope"
+                }
+              }
+            },
+            "description": "the journey read, envelope-wrapped"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "project not found / foreign tenant"
+          }
+        },
+        "summary": "The journey read: current stage, subState, primary action, needs-you and per-stage facts"
+      }
+    }
+  }
+}

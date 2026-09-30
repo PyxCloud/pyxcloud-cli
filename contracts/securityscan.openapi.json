@@ -1,0 +1,393 @@
+{
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "error": {
+            "description": "stable typed error code (SECSCAN-*)",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "BaselineFingerprint": {
+        "properties": {
+          "contractCapabilityVersion": {
+            "type": "string"
+          },
+          "rulesVersion": {
+            "type": "string"
+          },
+          "scannerToolsetVersion": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ETA": {
+        "properties": {
+          "basis": {
+            "description": "the statistical source of the projection",
+            "type": "string"
+          },
+          "calculatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "centralSeconds": {
+            "description": "absent unless status is ESTIMATED; zero is a real, honest projection distinct from UNKNOWN",
+            "type": "integer"
+          },
+          "confidence": {
+            "enum": [
+              "LOW",
+              "MEDIUM",
+              "HIGH"
+            ],
+            "type": "string"
+          },
+          "maxSeconds": {
+            "description": "absent unless status is ESTIMATED",
+            "type": "integer"
+          },
+          "minSeconds": {
+            "description": "absent unless status is ESTIMATED",
+            "type": "integer"
+          },
+          "modelVersion": {
+            "type": "string"
+          },
+          "reason": {
+            "description": "populated only when status is UNKNOWN",
+            "type": "string"
+          },
+          "sampleSize": {
+            "type": "integer"
+          },
+          "status": {
+            "description": "UNKNOWN is structurally distinct from a zero-second estimate: every numeric field below is absent, never present-as-zero, when status is UNKNOWN",
+            "enum": [
+              "ESTIMATED",
+              "UNKNOWN"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "NextRoute": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "target": {
+            "description": "a navigation fact, never a GO/NO_GO verdict",
+            "enum": [
+              "SCAN_IN_PROGRESS",
+              "SECURITY_GATE",
+              "SCAN_FAILED_BLOCKED"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Run": {
+        "properties": {
+          "baselineRunId": {
+            "type": "string"
+          },
+          "capabilityVersion": {
+            "type": "string"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "eta": {
+            "$ref": "#/components/schemas/ETA"
+          },
+          "failureReason": {
+            "description": "populated only when state is FAILED",
+            "type": "string"
+          },
+          "fingerprint": {
+            "$ref": "#/components/schemas/BaselineFingerprint"
+          },
+          "mode": {
+            "enum": [
+              "FULL",
+              "DELTA"
+            ],
+            "type": "string"
+          },
+          "nextRoute": {
+            "$ref": "#/components/schemas/NextRoute"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "QUEUED",
+              "RESOLVING_BASELINE",
+              "SCANNING",
+              "AGGREGATING",
+              "HANDOFF",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "progress": {
+            "description": "0..100, backend-measured",
+            "type": "integer"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "queuedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "retryCount": {
+            "type": "integer"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "description": "the scan's own execution state; carries no opinion about the Security Gate verdict",
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "RETRYING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "targets": {
+            "description": "1..N targets",
+            "items": {
+              "$ref": "#/components/schemas/Target"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RunEvent": {
+        "properties": {
+          "name": {
+            "enum": [
+              "securityscan.run.queued",
+              "securityscan.run.retrying",
+              "securityscan.run.completed",
+              "securityscan.run.failed"
+            ],
+            "type": "string"
+          },
+          "occurredAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "projectVersionId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "sequence": {
+            "description": "strictly increasing per runId; staleness is detected by sequence regression, never by wall clock",
+            "format": "int64",
+            "type": "integer"
+          },
+          "state": {
+            "enum": [
+              "QUEUED",
+              "RUNNING",
+              "RETRYING",
+              "COMPLETED",
+              "FAILED"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Step": {
+        "properties": {
+          "error": {
+            "description": "required when state is FAILED",
+            "type": "string"
+          },
+          "finishedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "retryCount": {
+            "type": "integer"
+          },
+          "scanner": {
+            "description": "secfindings.Source — derived, not restated",
+            "type": "string"
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "PENDING",
+              "RUNNING",
+              "RETRYING",
+              "SUCCEEDED",
+              "FAILED",
+              "REUSED"
+            ],
+            "type": "string"
+          },
+          "stepId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Target": {
+        "properties": {
+          "commitSha": {
+            "type": "string"
+          },
+          "coverage": {
+            "description": "secfindings.Coverage — derived, not restated",
+            "type": "object"
+          },
+          "fallbackReason": {
+            "description": "required when outcome is FALLBACK_FULL",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "PENDING",
+              "FULL_SCANNED",
+              "DELTA_SCANNED",
+              "REUSED",
+              "FALLBACK_FULL",
+              "FAILED"
+            ],
+            "type": "string"
+          },
+          "repoUrl": {
+            "type": "string"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/Step"
+            },
+            "type": "array"
+          },
+          "targetId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "REST face of the version-bound Security Scan aggregate (epic #1326). The scan page is READ-ONLY: locking Documentation/BoardOS creates an immutable project version and automatically starts its scan; the frontend observes the served Run and follows the backend-provided nextRoute. There is no start, triage, approval, remediation, skip or continue control on this surface. ETA is a structured projection distinct from zero (absent means UNKNOWN, never 0 seconds), and reaching nextRoute=SECURITY_GATE is a navigation fact — it carries no GO/NO_GO opinion.",
+    "title": "passo.build security scan API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/vibe/projects/{projectId}/versions/{versionId}/security/scan": {
+      "get": {
+        "operationId": "getSecurityScanRun",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "the immutable project version created at lock time; the run is pinned to it",
+            "in": "path",
+            "name": "versionId",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              },
+              "description": "the served run"
+            }
+          },
+          "404": {
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "project, version or run not found / foreign tenant"
+            }
+          },
+          "409": {
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ApiError"
+                  }
+                }
+              },
+              "description": "version not LOCKED_PENDING_ARCHITECTURE"
+            }
+          }
+        },
+        "summary": "The read-only scan run for a locked project version: state, phase, targets, ETA and next route"
+      }
+    }
+  }
+}
