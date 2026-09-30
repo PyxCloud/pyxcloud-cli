@@ -3,7 +3,7 @@
   "info": {
     "title": "Project CLI contract",
     "version": "1.0.0",
-    "description": "Mounted project create, state read, transition, and state advance routes. Request objects with undocumented DTOs are explicitly open."
+    "description": "Mounted project create/list/detail routes, legacy Vibe state routes, and canonical state-machine routes. Request objects with undocumented DTOs are explicitly open."
   },
   "servers": [
     {
@@ -139,6 +139,95 @@
             }
           }
         ]
+      }
+    },
+    "/vibe/projects/{projectId}": {
+      "get": {
+        "operationId": "projectRead",
+        "summary": "Read a project",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/state": {
+      "get": {
+        "operationId": "canonicalProjectStateRead",
+        "summary": "Read canonical project state",
+        "responses": {
+          "200": {
+            "description": "Canonical state snapshot including data, version, and events"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/projects/{projectId}/transitions": {
+      "post": {
+        "operationId": "canonicalProjectTransition",
+        "summary": "Apply a canonical project transition",
+        "responses": {
+          "200": {
+            "description": "Observed canonical state snapshot"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "version": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "event"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
       }
     }
   },

@@ -3,7 +3,7 @@
   "info": {
     "title": "Define and scope CLI contract",
     "version": "1.0.0",
-    "description": "Mounted define-analysis, documentation generation/read, and scope routes. Unknown handler DTOs are represented as dynamic JSON objects."
+    "description": "Mounted define-analysis, documentation generation/read, scope assessment, forecast, and compiled-documentation derivation routes. Unknown handler DTOs are represented as dynamic JSON objects."
   },
   "servers": [
     {
@@ -522,6 +522,31 @@
             }
           }
         }
+      }
+    },
+    "/vibe/projects/{projectId}/scope/derivation": {
+      "post": {
+        "operationId": "scopeDerivation",
+        "summary": "Derive scope from compiled documentation",
+        "description": "Derives a scope contract from existing compiled documentation. The route accepts no request body and does not apply a project-state transition.",
+        "responses": {
+          "200": {
+            "description": "Derived scope contract and compilation revision"
+          },
+          "409": {
+            "description": "no_compiled_documentation"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
       }
     }
   },
