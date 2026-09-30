@@ -67,6 +67,53 @@ func TestNewRedirectIsRejected(t *testing.T) {
 	}
 }
 
+func TestInjectedClientCannotFollowRedirects(t *testing.T) {
+	remoteHit := false
+	remote := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { remoteHit = true }))
+	defer remote.Close()
+	redirect := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, remote.URL, http.StatusFound) }))
+	defer redirect.Close()
+	injected := &http.Client{}
+	c := New(redirect.URL, nil)
+	c.HTTPClient = injected
+	_, err := c.Do(context.Background(), http.MethodGet, "/", nil, "")
+	if err == nil || remoteHit {
+		t.Fatalf("err=%v remoteHit=%v", err, remoteHit)
+	}
+}
+
+func TestServerErrorMetadataIsSanitized(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Request-ID", "safe-id\r\nsecret")
+		w.WriteHeader(http.StatusBadRequest)
+		io.WriteString(w, `{"error":"secret token with spaces"}`)
+	}))
+	defer server.Close()
+	_, err := New(server.URL, nil).Do(context.Background(), http.MethodGet, "/", nil, "")
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) || apiErr.Code != "http_error" || apiErr.RequestID != "" || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("unsafe server metadata surfaced: %#v", err)
+	}
+	if strings.Contains(err.Error(), "safe-id") {
+		t.Fatalf("request ID included in Error(): %v", err)
+	}
+}
+
+func TestDoRejectsBaseURLUserinfoAndForceQueryAndPathHash(t *testing.T) {
+	tokenCalls := 0
+	for _, base := range []string{"https://user:pass@example.test", "https://example.test/base?"} {
+		if _, err := New(base, func(context.Context) (string, error) { tokenCalls++; return "", nil }).Do(context.Background(), http.MethodGet, "/", nil, ""); err == nil {
+			t.Errorf("accepted base URL %q", base)
+		}
+	}
+	if _, err := New("https://example.test", func(context.Context) (string, error) { tokenCalls++; return "", nil }).Do(context.Background(), http.MethodGet, "/x#", nil, ""); err == nil {
+		t.Fatal("accepted path with empty fragment")
+	}
+	if tokenCalls != 0 {
+		t.Fatalf("invalid URLs reached token provider %d times", tokenCalls)
+	}
+}
+
 func TestDoPreservesCancellation(t *testing.T) {
 	started := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { close(started); <-r.Context().Done() }))
@@ -96,7 +143,7 @@ func TestDoLimitsResponseAndParsesAPIErrorCode(t *testing.T) {
 	defer api.Close()
 	_, err := New(api.URL, nil).Do(context.Background(), http.MethodGet, "/", nil, "")
 	var apiErr *APIError
-	if !errors.As(err, &apiErr) || apiErr.Code != "bad_input" || apiErr.RequestID != "rid" || strings.Contains(err.Error(), "private details") {
+	if !errors.As(err, &apiErr) || apiErr.Code != "bad_input" || apiErr.RequestID != "rid" || strings.Contains(err.Error(), "private details") || strings.Contains(err.Error(), "rid") {
 		t.Fatalf("err=%#v", err)
 	}
 }
@@ -112,5 +159,14 @@ func TestInvalidJSONNeverSentAndErrorsAreSanitized(t *testing.T) {
 	_, err = New(server.URL, func(context.Context) (string, error) { return "", errors.New("password=private") }).Do(context.Background(), http.MethodGet, "/", nil, "")
 	if err == nil || err.Error() != "authentication unavailable" || strings.Contains(err.Error(), "private") {
 		t.Fatalf("authentication error was not sanitized: %v", err)
+	}
+}
+
+func TestTokenProviderCancellationIsPreserved(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := New("https://api.example", func(context.Context) (string, error) { return "", errors.New("provider stopped") }).Do(ctx, http.MethodGet, "/", nil, "")
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("err=%v", err)
 	}
 }

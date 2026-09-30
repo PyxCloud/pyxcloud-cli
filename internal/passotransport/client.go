@@ -40,9 +40,6 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string {
-	if e.RequestID != "" {
-		return fmt.Sprintf("API error %s (HTTP %d, request %s)", e.Code, e.StatusCode, e.RequestID)
-	}
 	return fmt.Sprintf("API error %s (HTTP %d)", e.Code, e.StatusCode)
 }
 
@@ -65,14 +62,14 @@ func New(baseURL string, token func(context.Context) (string, error)) *Client {
 func (c *Client) Do(ctx context.Context, method, path string, body json.RawMessage, idempotencyKey string) (Response, error) {
 	var zero Response
 	parsedPath, err := url.Parse(path)
-	if err != nil || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || parsedPath.IsAbs() || parsedPath.Host != "" || parsedPath.Fragment != "" || strings.ContainsAny(path, "\r\n") {
+	if err != nil || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || parsedPath.IsAbs() || parsedPath.Host != "" || strings.Contains(path, "#") || strings.ContainsAny(path, "\r\n") {
 		return zero, errors.New("invalid request path")
 	}
 	if len(body) > 0 && !json.Valid(body) {
 		return zero, errors.New("invalid JSON request body")
 	}
 	base, err := url.Parse(c.BaseURL)
-	if err != nil || base.Scheme == "" || base.Host == "" || (base.Scheme != "http" && base.Scheme != "https") || base.RawQuery != "" || base.Fragment != "" {
+	if err != nil || base.Scheme == "" || base.Host == "" || base.User != nil || (base.Scheme != "http" && base.Scheme != "https") || base.RawQuery != "" || base.ForceQuery || strings.Contains(c.BaseURL, "#") {
 		return zero, errors.New("invalid API base URL")
 	}
 	requestURL := *base
@@ -103,6 +100,9 @@ func (c *Client) Do(ctx context.Context, method, path string, body json.RawMessa
 	if c.AccessToken != nil {
 		token, tokenErr := c.AccessToken(ctx)
 		if tokenErr != nil {
+			if ctx.Err() != nil {
+				return zero, fmt.Errorf("authentication unavailable: %w", ctx.Err())
+			}
 			return zero, errors.New("authentication unavailable")
 		}
 		if token != "" {
@@ -111,8 +111,12 @@ func (c *Client) Do(ctx context.Context, method, path string, body json.RawMessa
 	}
 	client := c.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 30 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return errors.New("redirects disabled") }}
+		client = &http.Client{Timeout: 30 * time.Second}
+	} else {
+		cloned := *client
+		client = &cloned
 	}
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return errors.New("redirects disabled") }
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -125,6 +129,7 @@ func (c *Client) Do(ctx context.Context, method, path string, body json.RawMessa
 	if responseID == "" {
 		responseID = resp.Header.Get("X-Request-Id")
 	}
+	responseID = sanitizeRequestID(responseID)
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
 		return zero, errors.New("request failed")
@@ -152,10 +157,36 @@ func apiErrorCode(body []byte) string {
 	if json.Unmarshal(body, &fields) == nil {
 		for _, key := range []string{"error", "code", "errorCode"} {
 			var code string
-			if raw, ok := fields[key]; ok && json.Unmarshal(raw, &code) == nil && code != "" {
+			if raw, ok := fields[key]; ok && json.Unmarshal(raw, &code) == nil && safeErrorCode(code) {
 				return code
 			}
 		}
 	}
 	return "http_error"
+}
+
+func safeErrorCode(code string) bool {
+	if len(code) == 0 || len(code) > 96 || !((code[0] >= 'A' && code[0] <= 'Z') || (code[0] >= 'a' && code[0] <= 'z')) {
+		return false
+	}
+	for i := 1; i < len(code); i++ {
+		c := code[i]
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-') {
+			return false
+		}
+	}
+	return true
+}
+
+func sanitizeRequestID(id string) string {
+	if len(id) > 128 {
+		return ""
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.' || c == ':') {
+			return ""
+		}
+	}
+	return id
 }
