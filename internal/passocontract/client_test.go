@@ -52,3 +52,17 @@ func TestInvokeRejectsUnknownAndInvalidParameters(t *testing.T) {
 		}
 	}
 }
+
+func TestInvokeWithIfMatchPropagatesOnlyExplicitVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("If-Match") != "0" {
+			t.Errorf("If-Match=%q", r.Header.Get("If-Match"))
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	version := int64(0)
+	if _, err := InvokeWithIfMatch(context.Background(), passotransport.New(server.URL, nil), "projects:projectStateAdvance", map[string]string{"projectId": "42"}, nil, nil, "", &version); err != nil {
+		t.Fatal(err)
+	}
+}

@@ -321,3 +321,45 @@ func TestPerformEvidenceContainsNoRequestPayload(t *testing.T) {
 		t.Fatalf("evidence mode %o", info.Mode().Perm())
 	}
 }
+
+func TestPerformWithIfMatchFingerprintsVersionAndNeverAddsBodyField(t *testing.T) {
+	var keys, matches, bodies []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		keys = append(keys, r.Header.Get("Idempotency-Key"))
+		matches = append(matches, r.Header.Get("If-Match"))
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer server.Close()
+	for _, version := range []int64{7, 8} {
+		r := testRunner(t, server, t.TempDir())
+		if _, err := r.PerformWithIfMatch(context.Background(), "advance", "projects:projectStateAdvance", map[string]string{"projectId": "42"}, nil, json.RawMessage(`{"state":"ready"}`), false, &version); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(keys) != 2 || keys[0] == keys[1] || matches[0] != "7" || matches[1] != "8" {
+		t.Fatalf("keys=%q If-Match=%q", keys, matches)
+	}
+	for _, body := range bodies {
+		if body != `{"state":"ready"}` || strings.Contains(body, "If-Match") {
+			t.Fatalf("If-Match entered request body: %s", body)
+		}
+	}
+}
+
+func TestPerformWithIfMatchRejectsNegativeBeforeLedgerAndNetwork(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer server.Close()
+	dir := t.TempDir()
+	r := testRunner(t, server, dir)
+	version := int64(-1)
+	_, err := r.PerformWithIfMatch(context.Background(), "advance", "projects:projectStateAdvance", map[string]string{"projectId": "42"}, nil, json.RawMessage(`{"state":"ready"}`), false, &version)
+	if err == nil || calls != 0 {
+		t.Fatalf("error=%v calls=%d", err, calls)
+	}
+	if _, statErr := os.Stat(r.LedgerPath); !os.IsNotExist(statErr) {
+		t.Fatalf("negative version wrote ledger: %v", statErr)
+	}
+}

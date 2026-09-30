@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -60,7 +61,16 @@ func New(baseURL string, token func(context.Context) (string, error)) *Client {
 // Do sends a request. The path must be an origin-relative path beginning with
 // one slash; the base URL's path prefix is retained.
 func (c *Client) Do(ctx context.Context, method, path string, body json.RawMessage, idempotencyKey string) (Response, error) {
+	return c.DoWithIfMatch(ctx, method, path, body, idempotencyKey, nil)
+}
+
+// DoWithIfMatch sends the explicitly supplied optimistic version as a decimal
+// If-Match header. A nil version preserves Do's existing request behavior.
+func (c *Client) DoWithIfMatch(ctx context.Context, method, path string, body json.RawMessage, idempotencyKey string, ifMatch *int64) (Response, error) {
 	var zero Response
+	if ifMatch != nil && *ifMatch < 0 {
+		return zero, errors.New("invalid If-Match version")
+	}
 	parsedPath, err := url.Parse(path)
 	if err != nil || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || parsedPath.IsAbs() || parsedPath.Host != "" || strings.Contains(path, "#") || strings.ContainsAny(path, "\r\n") {
 		return zero, errors.New("invalid request path")
@@ -96,6 +106,9 @@ func (c *Client) Do(ctx context.Context, method, path string, body json.RawMessa
 	}
 	if idempotencyKey != "" && isMutating(method) {
 		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
+	if ifMatch != nil {
+		req.Header.Set("If-Match", strconv.FormatInt(*ifMatch, 10))
 	}
 	if c.AccessToken != nil {
 		token, tokenErr := c.AccessToken(ctx)

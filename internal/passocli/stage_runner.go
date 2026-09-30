@@ -56,7 +56,16 @@ func ReadInput(path string, in io.Reader) (json.RawMessage, error) {
 
 // Perform invokes one generated API operation and records mutation metadata.
 func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, params map[string]string, query url.Values, input json.RawMessage, bodyIdempotency bool) (Result, error) {
+	return r.PerformWithIfMatch(ctx, stage, operationKey, params, query, input, bodyIdempotency, nil)
+}
+
+// PerformWithIfMatch adds an optional optimistic version to the transport
+// request and idempotency fingerprint without changing the JSON body.
+func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey string, params map[string]string, query url.Values, input json.RawMessage, bodyIdempotency bool, ifMatch *int64) (Result, error) {
 	var empty Result
+	if ifMatch != nil && *ifMatch < 0 {
+		return empty, &ExitError{20, "invalid_if_match_version"}
+	}
 	op, ok := passocontract.Operations[operationKey]
 	if !ok {
 		return empty, &ExitError{20, "unknown_operation"}
@@ -78,7 +87,11 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 	if _, supplied := bodyObject["idempotencyKey"]; supplied {
 		return empty, &ExitError{20, "managed_idempotency_key"}
 	}
-	canonical, err := json.Marshal(map[string]any{"params": params, "query": query, "body": bodyObject})
+	fingerprint := map[string]any{"params": params, "query": query, "body": bodyObject}
+	if ifMatch != nil {
+		fingerprint["ifMatchVersion"] = *ifMatch
+	}
+	canonical, err := json.Marshal(fingerprint)
 	if err != nil {
 		return empty, &ExitError{20, "invalid_input"}
 	}
@@ -126,7 +139,7 @@ func (r *Runtime) Perform(ctx context.Context, stage, operationKey string, param
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	resp, callErr := passocontract.Invoke(callCtx, r.Client, operationKey, params, query, body, key)
+	resp, callErr := passocontract.InvokeWithIfMatch(callCtx, r.Client, operationKey, params, query, body, key, ifMatch)
 	if callErr != nil {
 		if mutation {
 			state := "uncertain"

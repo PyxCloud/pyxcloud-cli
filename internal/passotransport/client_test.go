@@ -170,3 +170,37 @@ func TestTokenProviderCancellationIsPreserved(t *testing.T) {
 		t.Fatalf("err=%v", err)
 	}
 }
+
+func TestDoWithIfMatchUsesRawNonnegativeDecimalAndOptionalHeader(t *testing.T) {
+	var headers []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		headers = append(headers, r.Header.Get("If-Match"))
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	c := New(server.URL, nil)
+	version := int64(9223372036854775807)
+	if _, err := c.DoWithIfMatch(context.Background(), http.MethodPost, "/v1/items", nil, "", &version); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.Do(context.Background(), http.MethodPost, "/v1/items", nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if len(headers) != 2 || headers[0] != "9223372036854775807" || headers[1] != "" {
+		t.Fatalf("If-Match headers=%q", headers)
+	}
+}
+
+func TestDoWithIfMatchRejectsNegativeBeforeTokenOrNetwork(t *testing.T) {
+	calls, tokens := 0, 0
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { calls++ }))
+	defer server.Close()
+	version := int64(-1)
+	c := New(server.URL, func(context.Context) (string, error) { tokens++; return "token", nil })
+	if _, err := c.DoWithIfMatch(context.Background(), http.MethodPost, "/v1/items", nil, "", &version); err == nil {
+		t.Fatal("negative If-Match version accepted")
+	}
+	if calls != 0 || tokens != 0 {
+		t.Fatalf("request/token calls=%d/%d", calls, tokens)
+	}
+}
