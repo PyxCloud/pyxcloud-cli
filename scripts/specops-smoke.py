@@ -22,6 +22,11 @@ import requests
 DEFAULT_API = "http://127.0.0.1:16080"
 DEFAULT_ISSUER = "http://sso.localtest.me:18081/realms/passobuild"
 CALLBACK = "http://127.0.0.1:51903/callback"
+PRIMARY_ACTION_KEYS = frozenset({
+    "continue_pre_execution", "open_board", "freeze", "open_security_report",
+    "fix_on_board", "design_architecture", "choose_cloud", "deploy",
+    "follow_deploy", "retry_deploy", "open_app",
+})
 
 
 def local_http_url(raw: str, *, allow_sso: bool = False) -> str:
@@ -173,8 +178,9 @@ def compact_status(raw: bytes, project_id: str):
     if not isinstance(result.get("stage"), str) or not result["stage"]:
         raise ValueError("status stage missing")
     action = result.get("nextAction")
-    if not isinstance(action, dict) or not isinstance(action.get("key"), str) or not action["key"]:
-        raise ValueError("status nextAction.key missing")
+    key = action.get("key") if isinstance(action, dict) else None
+    if not isinstance(key, str) or key not in PRIMARY_ACTION_KEYS:
+        raise ValueError("status nextAction.key invalid")
     return {"schemaVersion": 1, "profile": "sandbox", "projectId": str(project_id),
             "status": result.get("status"), "stage": result["stage"], "nextActionKey": action["key"]}
 

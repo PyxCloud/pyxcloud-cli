@@ -31,7 +31,8 @@ class SmokeHarnessTests(unittest.TestCase):
         self.assertNotIn("access_token", str(record))
 
     def test_status_rejects_bad_project_and_action(self):
-        for raw in (b'{"schemaVersion":1,"profile":"sandbox","projectId":2,"stage":"board","nextAction":{"key":"x"}}',
+        for raw in (b'{"schemaVersion":1,"profile":"sandbox","projectId":2,"stage":"board","nextAction":{"key":"open_board"}}',
+                    b'{"schemaVersion":1,"profile":"sandbox","projectId":1,"stage":"board","nextAction":{"key":"invented_action"}}',
                     b'{"schemaVersion":1,"profile":"sandbox","projectId":1,"stage":"board","nextAction":{}}'):
             with self.subTest(raw=raw), self.assertRaises(ValueError):
                 smoke.compact_status(raw, "1")

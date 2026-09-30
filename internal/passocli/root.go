@@ -223,6 +223,15 @@ func (r *Runtime) Emit(v Result) error {
 	if v.Code != "" {
 		lines = append(lines, "Code: "+v.Code)
 	}
+	if action := humanPrimaryAction(v.NextAction); action != nil {
+		lines = append(lines, "Next action: "+action.Key)
+		if action.Label != "" {
+			lines = append(lines, "Label: "+action.Label)
+		}
+		if action.Href != "" {
+			lines = append(lines, "URL: "+action.Href)
+		}
+	}
 	if len(lines) == 0 {
 		lines = append(lines, "OK")
 	}
@@ -267,7 +276,61 @@ func validPrimaryAction(raw json.RawMessage) bool {
 		return false
 	}
 	var key string
-	return json.Unmarshal(action["key"], &key) == nil && strings.TrimSpace(key) != ""
+	if json.Unmarshal(action["key"], &key) != nil {
+		return false
+	}
+	switch key {
+	case "continue_pre_execution", "open_board", "freeze", "open_security_report", "fix_on_board", "design_architecture", "choose_cloud", "deploy", "follow_deploy", "retry_deploy", "open_app":
+		return true
+	default:
+		return false
+	}
+}
+
+type humanAction struct{ Key, Label, Href string }
+
+func humanPrimaryAction(raw any) *humanAction {
+	var data []byte
+	switch v := raw.(type) {
+	case json.RawMessage:
+		data = v
+	case []byte:
+		data = v
+	default:
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(data, &fields) != nil {
+		return nil
+	}
+	var action humanAction
+	if json.Unmarshal(fields["key"], &action.Key) != nil || !validPrimaryAction(data) {
+		return nil
+	}
+	_ = json.Unmarshal(fields["label"], &action.Label)
+	_ = json.Unmarshal(fields["href"], &action.Href)
+	action.Key = cleanHumanField(action.Key)
+	action.Label = cleanHumanField(action.Label)
+	action.Href = cleanHumanField(action.Href)
+	return &action
+}
+
+func cleanHumanField(value string) string {
+	value = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || r >= 0x80 && r <= 0x9f {
+			if r == '\n' || r == '\r' || r == '\t' {
+				return ' '
+			}
+			return -1
+		}
+		return r
+	}, value)
+	value = strings.Join(strings.Fields(value), " ")
+	runes := []rune(value)
+	if len(runes) > 256 {
+		value = string(runes[:256])
+	}
+	return value
 }
 func (r *Runtime) monitor(ctx context.Context, watch bool) error {
 	if !watch {

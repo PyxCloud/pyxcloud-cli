@@ -146,6 +146,7 @@ func TestStatusRejectsMalformedOrMismatchedJourney(t *testing.T) {
 		{"wrong project", `{"data":{"projectId":8,"stage":"gate","primaryAction":{"key":"open_board"}}}`},
 		{"unknown stage", `{"data":{"projectId":7,"stage":"unknown","primaryAction":{"key":"open_board"}}}`},
 		{"missing action key", `{"data":{"projectId":7,"stage":"gate","primaryAction":{"label":"Review"}}}`},
+		{"unknown action key", `{"data":{"projectId":7,"stage":"gate","primaryAction":{"key":"invented_action"}}}`},
 		{"action not object", `{"data":{"projectId":7,"stage":"gate","primaryAction":[]}}`},
 		{"malformed json", `not-json`},
 	}
@@ -168,6 +169,32 @@ func TestStatusRejectsMalformedOrMismatchedJourney(t *testing.T) {
 				t.Fatalf("reported success for invalid journey: %s", out.String())
 			}
 		})
+	}
+}
+
+func TestHumanStatusShowsSanitizedNextActionAndBrowserURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"data":{"projectId":7,"stage":"gate","primaryAction":{"key":"freeze","label":"Seal release\nInjected","href":"https://console.example/seal\u001b[31m"}}}`)
+	}))
+	defer srv.Close()
+	t.Setenv("PASSO_API_URL", srv.URL)
+	t.Setenv("PASSO_ISSUER_URL", srv.URL)
+	t.Setenv("PASSO_CONSOLE_URL", srv.URL)
+	store := &memoryStore{token: passoauth.Token{AccessToken: "token", ExpiresAt: time.Now().Add(time.Hour)}}
+	var out, errOut bytes.Buffer
+	cmd := New(Options{Out: &out, Err: &errOut, Store: store})
+	cmd.SetArgs([]string{"--project", "7", "status"})
+	if err := cmd.ExecuteContext(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{"Next action: freeze", "Label: Seal release Injected", "URL: https://console.example/seal[31m"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("human status omitted %q: %q", want, got)
+		}
+	}
+	if strings.ContainsAny(got, "\x1b\r") || strings.Count(got, "\n") > 8 {
+		t.Fatalf("human status contains controls or exceeds 8 lines: %q", got)
 	}
 }
 
