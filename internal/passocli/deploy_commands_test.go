@@ -156,22 +156,48 @@ func TestCreateWaitObservesTerminalAndNeverFakesCompleted(t *testing.T) {
 }
 
 func TestCreateWaitDeadlineAndBackendErrorAreTyped(t *testing.T) {
-	t.Run("deadline", func(t *testing.T) {
+	t.Run("deadline while polling", func(t *testing.T) {
+		pollStarted := make(chan struct{})
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if r.Method == http.MethodPost {
 				_, _ = w.Write([]byte(`{"data":{"runId":"run-9","state":"queued"}}`))
 				return
 			}
-			_, _ = w.Write([]byte(`{"data":{"runId":"run-9","state":"running"}}`))
+			close(pollStarted)
+			<-r.Context().Done()
 		}))
 		defer srv.Close()
 		var out bytes.Buffer
 		r := deployTestRuntime(t, srv, &out)
-		r.timeout = 5 * time.Millisecond
+		r.timeout = 100 * time.Millisecond
 		r.PollInterval = time.Millisecond
 		in := writeDeployInput(t, `{"releaseId":"rel","environmentId":"env"}`)
-		err := executeDeploy(t, r, "deploy", "create", "--input", in, "--wait")
+		done := make(chan error, 1)
+		go func() { done <- executeDeploy(t, r, "deploy", "create", "--input", in, "--wait") }()
+		select {
+		case <-pollStarted:
+		case <-time.After(time.Second):
+			t.Fatal("poll request did not start")
+		}
+		err := <-done
 		if err == nil || ExitCode(err) != 20 || err.Error() != "deadline_exceeded" {
+			t.Fatalf("err=%v", err)
+		}
+	})
+	t.Run("creation error is preserved", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Method != http.MethodPost {
+				t.Errorf("unexpected polling request %s", r.Method)
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"error":{"code":"deployment_unavailable"}}`))
+		}))
+		defer srv.Close()
+		var out bytes.Buffer
+		r := deployTestRuntime(t, srv, &out)
+		in := writeDeployInput(t, `{"releaseId":"rel","environmentId":"env"}`)
+		err := executeDeploy(t, r, "deploy", "create", "--input", in, "--wait")
+		if err == nil || ExitCode(err) != 30 || err.Error() != "http_error" {
 			t.Fatalf("err=%v", err)
 		}
 	})

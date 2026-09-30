@@ -221,6 +221,12 @@ func waitManagedRun(ctx context.Context, r *Runtime) (Result, error) {
 	for {
 		res, err := r.Perform(ctx, "deploy", "journeycontract:managedDeploymentRead", params, nil, nil, false)
 		if err != nil {
+			if ctx.Err() == context.Canceled {
+				return Result{}, &ExitError{20, "canceled"}
+			}
+			if ctx.Err() == context.DeadlineExceeded {
+				return Result{}, &ExitError{20, "deadline_exceeded"}
+			}
 			return Result{}, err
 		}
 		state, ok := managedRunState(res.Data)
