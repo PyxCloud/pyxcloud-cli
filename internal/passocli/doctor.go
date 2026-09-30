@@ -71,26 +71,33 @@ func runDoctor(profile, ledgerPath string, project int64, homeDir func() (string
 		r.Profile.APIURL, r.Profile.IssuerURL = p.APIURL, p.IssuerURL
 		r.Checks.Profile = doctorCheck{"ok", "profile endpoints are configured and pass safety checks"}
 	}
-	ledger, ledgerErr := passostate.Load(ledgerPath)
-	if ledgerErr != nil {
-		r.Checks.Ledger = doctorCheck{"error", "ledger is unreadable or invalid"}
-		if code == "" {
-			code = "invalid_ledger"
-		}
-	} else if _, statErr := os.Stat(ledgerPath); os.IsNotExist(statErr) {
-		r.Checks.Ledger = doctorCheck{"warning", "ledger is not present yet"}
-	} else if statErr != nil {
-		r.Checks.Ledger = doctorCheck{"error", "ledger is unreadable or invalid"}
-		if code == "" {
-			code = "invalid_ledger"
-		}
-	} else if ledger.Profile != "" && ledger.Profile != profile || ledger.ProjectID > 0 && project > 0 && ledger.ProjectID != project || project < 0 {
+	if project < 0 {
 		r.Checks.Ledger = doctorCheck{"error", "ledger scope does not match selected profile or project"}
 		if code == "" {
 			code = "scope_mismatch"
 		}
 	} else {
-		r.Checks.Ledger = doctorCheck{"ok", "ledger is readable and scope is valid"}
+		ledger, ledgerErr := passostate.Load(ledgerPath)
+		if ledgerErr != nil {
+			r.Checks.Ledger = doctorCheck{"error", "ledger is unreadable or invalid"}
+			if code == "" {
+				code = "invalid_ledger"
+			}
+		} else if _, statErr := os.Stat(ledgerPath); os.IsNotExist(statErr) {
+			r.Checks.Ledger = doctorCheck{"warning", "ledger is not present yet"}
+		} else if statErr != nil {
+			r.Checks.Ledger = doctorCheck{"error", "ledger is unreadable or invalid"}
+			if code == "" {
+				code = "invalid_ledger"
+			}
+		} else if ledger.Profile != "" && ledger.Profile != profile || ledger.ProjectID > 0 && project > 0 && ledger.ProjectID != project {
+			r.Checks.Ledger = doctorCheck{"error", "ledger scope does not match selected profile or project"}
+			if code == "" {
+				code = "scope_mismatch"
+			}
+		} else {
+			r.Checks.Ledger = doctorCheck{"ok", "ledger is readable and scope is valid"}
+		}
 	}
 	home, homeErr := homeDir()
 	if homeErr != nil || home == "" {

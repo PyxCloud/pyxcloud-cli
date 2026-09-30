@@ -92,6 +92,42 @@ func TestDoctorJSONFailsClosedForUnsafeProfileAndLedgerScope(t *testing.T) {
 	}
 }
 
+func TestDoctorRejectsNegativeProjectWithMissingOrPresentLedger(t *testing.T) {
+	t.Setenv("PASSO_API_URL", "https://api.example.test")
+	t.Setenv("PASSO_ISSUER_URL", "https://login.example.test")
+	t.Setenv("PASSO_CONSOLE_URL", "https://console.example.test")
+	for _, tc := range []struct {
+		name   string
+		ledger string
+	}{
+		{name: "missing ledger"},
+		{name: "present ledger", ledger: `{"schemaVersion":1,"profile":"sandbox","projectId":42}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "ledger.json")
+			if tc.ledger != "" {
+				if err := os.WriteFile(path, []byte(tc.ledger), 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			var out bytes.Buffer
+			cmd := New(Options{Out: &out, Err: &bytes.Buffer{}, Store: doctorTripwireStore{}, HTTPClient: &http.Client{Transport: doctorTripwireTransport{}}})
+			cmd.SetArgs([]string{"--project=-1", "--ledger", path, "doctor", "--json"})
+			err := cmd.ExecuteContext(context.Background())
+			if err == nil || ExitCode(err) != 20 {
+				t.Fatalf("negative project should fail with exit 20: %v output=%s", err, out.String())
+			}
+			var got doctorReport
+			if err := json.Unmarshal(out.Bytes(), &got); err != nil {
+				t.Fatalf("decode report: %v output=%s", err, out.String())
+			}
+			if got.Status != "error" || got.Error != "scope_mismatch" || got.Checks.Ledger.Status != "error" {
+				t.Fatalf("unexpected report: %#v", got)
+			}
+		})
+	}
+}
+
 func TestDoctorReportsManagedSkillAndCatalogListsCommand(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("PASSO_API_URL", "https://api.example.test")
