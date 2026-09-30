@@ -85,6 +85,23 @@ func TestRunPreflightsLaterInvalidStepsBeforeAnyRequest(t *testing.T) {
 	}
 }
 
+func TestRunPreflightsCheckOperationStageBeforeAnyRequest(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"status":"ready"}}`))
+	}))
+	defer srv.Close()
+	r, out := testRunRuntime(t, srv.URL, time.Second)
+	plan := `{"schemaVersion":1,"steps":[{"stage":"connect","operation":"projects:canonicalProjectTransition","params":{"projectId":"${projectId}"},"query":{},"input":{"to":"ready"},"bodyIdempotency":true,"check":{"operation":"journeycontract:releaseEligibilityRead","params":{"projectId":"${projectId}"},"query":{},"pointer":"/data/status","equals":"ready"}}]}`
+	err := executeRunPlan(t, plan, "connect", r, out)
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != "operation_stage_mismatch" || calls != 0 {
+		t.Fatalf("err=%v calls=%d; check operations from another stage must be rejected before network", err, calls)
+	}
+}
+
 func TestRunStopsAtSelectedTarget(t *testing.T) {
 	calls := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -153,7 +170,7 @@ func TestRunDoesNotTrustLedgerWhenBackendCheckIsFalse(t *testing.T) {
 		_, _ = w.Write([]byte(`{"accepted":true}`))
 	}))
 	defer srv.Close()
-	r, out := testRunRuntime(t, srv.URL, 20*time.Millisecond)
+	r, out := testRunRuntime(t, srv.URL, 200*time.Millisecond)
 	r.Ledger.Operations = map[string]passostate.Operation{"projects:canonicalProjectTransition": {State: "completed"}}
 	plan := `{"schemaVersion":1,"steps":[{"stage":"connect","operation":"projects:canonicalProjectTransition","params":{"projectId":"${projectId}"},"query":{},"input":{"to":"ready"},"bodyIdempotency":true,"check":{"operation":"projects:canonicalProjectStateRead","params":{"projectId":"${projectId}"},"query":{},"pointer":"/data/status","equals":"ready"}}]}`
 	err := executeRunPlan(t, plan, "connect", r, out)

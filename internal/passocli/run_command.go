@@ -234,6 +234,9 @@ func validateRunPlan(p runPlan) error {
 			if !cok || cop.Method != http.MethodGet || s.Check.Pointer != "" && !validPointer(s.Check.Pointer) || !json.Valid(s.Check.Equals) {
 				return &ExitError{20, "invalid_check"}
 			}
+			if operationStage(s.Check.Operation) != s.Stage {
+				return &ExitError{20, "operation_stage_mismatch"}
+			}
 			if !validParamTemplates(s.Check.Params) {
 				return &ExitError{20, "invalid_check"}
 			}
