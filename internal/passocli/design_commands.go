@@ -108,12 +108,12 @@ func newDesignCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*co
 	evaluate := &cobra.Command{Use: "evaluate", Short: "Start cloud evaluation", Args: cobra.NoArgs}
 	inputFlag(evaluate)
 	evaluate.RunE = func(cmd *cobra.Command, _ []string) error {
-		input, err := readInput(cmd, false)
+		input, err := readInput(cmd, true)
 		if err != nil {
 			return err
 		}
 		return withRuntime(cmd, true, func(r *Runtime) error {
-			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare.v2:startCloudEvaluation", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": r.VersionID}, url.Values{}, input, true)
+			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare.v2:startCloudEvaluation", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": r.VersionID}, url.Values{}, input, false)
 			if err != nil {
 				return err
 			}
@@ -128,7 +128,7 @@ func newDesignCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*co
 			return err
 		}
 		return withRuntime(cmd, true, func(r *Runtime) error {
-			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare.v2:createCloudSelectionV2", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": r.VersionID}, url.Values{}, input, true)
+			result, err := r.Perform(cmd.Context(), "cloud", "regioncompare:createCloudSelection", map[string]string{"projectId": strconv.FormatInt(r.ProjectID, 10), "versionId": r.VersionID}, url.Values{}, input, false)
 			if err != nil {
 				return err
 			}

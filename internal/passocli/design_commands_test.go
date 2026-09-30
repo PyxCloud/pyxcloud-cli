@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -32,17 +33,19 @@ func designTestRoot(t *testing.T, runtime *Runtime, in io.Reader, out io.Writer)
 
 func TestDesignCommandsUseGeneratedRoutesAuthAndManagedMutationKeys(t *testing.T) {
 	tests := []struct {
-		name, args, method, path, input string
-		status                          int
+		name, args, method, path, input, operation string
+		wantBody                                   map[string]any
+		managedBodyKey                             bool
+		status                                     int
 	}{
 		{name: "architecture read", args: "design", method: http.MethodGet, path: "/vibe/projects/42/architecture", status: http.StatusOK},
 		{name: "generation read", args: "design generation gen-1", method: http.MethodGet, path: "/vibe/projects/42/architecture/generations/gen-1", status: http.StatusOK},
 		{name: "proposal read", args: "design proposal prop-1", method: http.MethodGet, path: "/vibe/projects/42/architecture/proposals/prop-1", status: http.StatusOK},
-		{name: "generation create", args: "design generate --input", method: http.MethodPost, path: "/vibe/projects/42/architecture/generations", input: `{"optimizationObjective":"BALANCED"}`, status: http.StatusAccepted},
-		{name: "architecture choose", args: "design choose --input", method: http.MethodPost, path: "/vibe/projects/42/architecture/selections", input: `{"generationId":"gen-1","proposalId":"prop-1"}`, status: http.StatusAccepted},
+		{name: "generation create", args: "design generate --input", method: http.MethodPost, path: "/vibe/projects/42/architecture/generations", input: `{"optimizationObjective":"BALANCED"}`, operation: "architecture:createArchitectureGeneration", managedBodyKey: true, status: http.StatusAccepted},
+		{name: "architecture choose", args: "design choose --input", method: http.MethodPost, path: "/vibe/projects/42/architecture/selections", input: `{"generationId":"gen-1","proposalId":"prop-1"}`, operation: "architecture:createArchitectureSelection", managedBodyKey: true, status: http.StatusAccepted},
 		{name: "compare read", args: "compare", method: http.MethodGet, path: "/vibe/projects/42/versions/v-7/cloud/compare", status: http.StatusOK},
-		{name: "evaluation start", args: "compare evaluate", method: http.MethodPost, path: "/vibe/projects/42/versions/v-7/cloud/evaluations", status: http.StatusAccepted},
-		{name: "cloud choose", args: "compare choose --input", method: http.MethodPost, path: "/vibe/projects/42/versions/v-7/cloud/selections", input: `{"provider":"aws","region":"eu-frankfurt"}`, status: http.StatusAccepted},
+		{name: "evaluation start", args: "compare evaluate --input", method: http.MethodPost, path: "/vibe/projects/42/versions/v-7/cloud/evaluations", input: `{"deploymentRegionId":"nyc3","objective":"LOWEST_COST"}`, operation: "regioncompare.v2:startCloudEvaluation", wantBody: map[string]any{"deploymentRegionId": "nyc3", "objective": "LOWEST_COST"}, status: http.StatusAccepted},
+		{name: "cloud choose", args: "compare choose --input", method: http.MethodPost, path: "/vibe/projects/42/versions/v-7/cloud/selections", input: `{"deploymentRegionId":"nyc3","evaluationId":"eval-1","candidateId":"candidate-1"}`, operation: "regioncompare:createCloudSelection", wantBody: map[string]any{"deploymentRegionId": "nyc3", "evaluationId": "eval-1", "candidateId": "candidate-1"}, status: http.StatusAccepted},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -70,8 +73,21 @@ func TestDesignCommandsUseGeneratedRoutesAuthAndManagedMutationKeys(t *testing.T
 					if err := json.NewDecoder(req.Body).Decode(&got); err != nil {
 						t.Errorf("decode body: %v", err)
 					}
-					if got["idempotencyKey"] == nil {
+					if tt.managedBodyKey && got["idempotencyKey"] == nil {
 						t.Error("mutation body has no managed idempotencyKey")
+					}
+					if tt.wantBody != nil {
+						decoded := map[string]any{}
+						for key, value := range got {
+							var item any
+							if err := json.Unmarshal(value, &item); err != nil {
+								t.Errorf("decode body field %s: %v", key, err)
+							}
+							decoded[key] = item
+						}
+						if !reflect.DeepEqual(decoded, tt.wantBody) {
+							t.Errorf("request body = %#v; want exact body %#v", decoded, tt.wantBody)
+						}
 					}
 					if req.Header.Get("Idempotency-Key") == "" {
 						t.Error("mutation has no Idempotency-Key header")
@@ -111,10 +127,11 @@ func TestDesignCommandsUseGeneratedRoutesAuthAndManagedMutationKeys(t *testing.T
 				if err != nil || json.Unmarshal(data, &ledger) != nil {
 					t.Fatalf("read mutation ledger: %v", err)
 				}
-				for key, op := range ledger.Operations {
-					if op.State != "accepted" {
-						t.Errorf("%s state = %s; accepted response must not claim completion", key, op.State)
-					}
+				op, ok := ledger.Operations[tt.operation]
+				if !ok {
+					t.Errorf("mutation operation %q absent from ledger", tt.operation)
+				} else if op.State != "accepted" {
+					t.Errorf("%s state = %s; accepted response must not claim completion", tt.operation, op.State)
 				}
 			}
 		})
@@ -131,6 +148,7 @@ func TestDesignCommandsRejectMissingScopeOrInputBeforeRequest(t *testing.T) {
 		{name: "version", args: "compare", project: 42, wantCode: "version_required"},
 		{name: "input", args: "design generate", project: 42, wantCode: "input_required"},
 		{name: "selection input", args: "compare choose", project: 42, version: "v-7", wantCode: "input_required"},
+		{name: "evaluation input", args: "compare evaluate", project: 42, version: "v-7", wantCode: "input_required"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
