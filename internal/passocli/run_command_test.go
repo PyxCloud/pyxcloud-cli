@@ -3,6 +3,7 @@ package passocli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -117,6 +118,94 @@ func TestRunStopsAtSelectedTarget(t *testing.T) {
 	}
 	if calls != 1 {
 		t.Fatalf("calls=%d; target must cut off later step", calls)
+	}
+}
+
+func TestRunSubstitutesAuthoritativeVersionSequenceForCloudAndSecurityPaths(t *testing.T) {
+	const versionUUID = "9fce9406-6e8e-4e74-9342-2d3c7ba4207e"
+	paths := map[string]bool{}
+	posts := map[string]int{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths[r.URL.Path] = true
+		if r.Method == http.MethodPost {
+			if r.URL.Path == "/projects/17/contract/release-freeze" {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"data":{"versionId":"` + versionUUID + `","versionSequence":23}}`))
+				return
+			}
+			key := strings.TrimSuffix(r.URL.Path, "/cloud/evaluations")
+			key = strings.TrimSuffix(key, "/security/gate/preview")
+			posts[key]++
+			w.WriteHeader(http.StatusAccepted)
+			_, _ = w.Write([]byte(`{"accepted":true}`))
+			return
+		}
+		status := "working"
+		key := strings.TrimSuffix(r.URL.Path, "/cloud/compare")
+		key = strings.TrimSuffix(key, "/security/gate")
+		if posts[key] > 0 {
+			status = "ready"
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"data":{"status":"` + status + `"}}`))
+	}))
+	defer srv.Close()
+	r, _ := testRunRuntime(t, srv.URL, time.Second)
+	if _, err := r.Perform(context.Background(), "freeze", "journeycontract:releaseFreezeCreate", map[string]string{"projectId": "17"}, nil, json.RawMessage(`{"expectedVersion":1}`), false); err != nil {
+		t.Fatal(err)
+	}
+	if r.VersionID != versionUUID || r.VersionSequence != 23 {
+		t.Fatalf("freeze did not establish separate authoritative identities: UUID=%q sequence=%d", r.VersionID, r.VersionSequence)
+	}
+	for _, tc := range []struct {
+		stage, operation, check, suffix string
+	}{
+		{"compare", "regioncompare.v2:startCloudEvaluation", "regioncompare.v2:getCloudCompareV2", "/cloud/evaluations"},
+		{"secure", "securitygate:requestRemediationPreview", "securitygate:getSecurityGateEvaluation", "/security/gate/preview"},
+	} {
+		posts = map[string]int{}
+		plan := `{"schemaVersion":1,"steps":[{"stage":"` + tc.stage + `","operation":"` + tc.operation + `","params":{"projectId":"${projectId}","versionId":"${versionSequence}"},"query":{},"input":{},"bodyIdempotency":true,"check":{"operation":"` + tc.check + `","params":{"projectId":"${projectId}","versionId":"${versionSequence}"},"query":{},"pointer":"/data/status","equals":"ready"}}]}`
+		if err := executeRunPlan(t, plan, tc.stage, r, &bytes.Buffer{}); err != nil {
+			t.Fatalf("%s plan using frozen sequence failed: %v", tc.stage, err)
+		}
+	}
+	for _, path := range []string{
+		"/vibe/projects/17/versions/23/cloud/evaluations",
+		"/vibe/projects/17/versions/23/cloud/compare",
+		"/vibe/projects/17/versions/23/security/gate/preview",
+		"/vibe/projects/17/versions/23/security/gate",
+	} {
+		if !paths[path] {
+			t.Errorf("plan did not request sequence-scoped path %q; paths=%v", path, paths)
+		}
+	}
+	if paths["/vibe/projects/17/versions/"+versionUUID+"/cloud/compare"] || paths["/vibe/projects/17/versions/"+versionUUID+"/security/gate"] {
+		t.Fatal("UUID was used as a numeric version path")
+	}
+}
+
+func TestRunVersionSubstitutionsKeepUUIDAndSequenceDistinct(t *testing.T) {
+	r := &Runtime{VersionID: "version-uuid", VersionSequence: 23}
+	got := substituteParams(map[string]string{"releaseRoute": "${versionId}", "ordinalRoute": "${versionSequence}"}, r)
+	if got["releaseRoute"] != "version-uuid" || got["ordinalRoute"] != "23" {
+		t.Fatalf("version substitutions conflated: %#v", got)
+	}
+}
+
+func TestRunSequencePlaceholderFailsClosedBeforeFreeze(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		_, _ = w.Write([]byte(`{"data":{}}`))
+	}))
+	defer srv.Close()
+	r, _ := testRunRuntime(t, srv.URL, time.Second)
+	r.VersionID = "version-uuid"
+	plan := `{"schemaVersion":1,"steps":[{"stage":"compare","operation":"regioncompare.v2:getCloudCompareV2","params":{"projectId":"${projectId}","versionId":"${versionSequence}"},"query":{}}]}`
+	err := executeRunPlan(t, plan, "compare", r, &bytes.Buffer{})
+	var exit *ExitError
+	if !errors.As(err, &exit) || exit.Code != "scope_mismatch" || calls != 0 {
+		t.Fatalf("missing frozen sequence must fail before HTTP: err=%v calls=%d", err, calls)
 	}
 }
 

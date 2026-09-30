@@ -247,7 +247,7 @@ func validateRunPlan(p runPlan) error {
 
 func validParamTemplates(params map[string]string) bool {
 	for _, value := range params {
-		if strings.Contains(value, "${") && value != "${projectId}" && value != "${versionId}" && value != "${releaseId}" && value != "${runId}" {
+		if strings.Contains(value, "${") && value != "${projectId}" && value != "${versionId}" && value != "${versionSequence}" && value != "${releaseId}" && value != "${runId}" {
 			return false
 		}
 	}
@@ -323,6 +323,12 @@ func substituteParams(src map[string]string, r *Runtime) map[string]string {
 			v = strconv.FormatInt(r.ProjectID, 10)
 		case "${versionId}":
 			v = r.VersionID
+		case "${versionSequence}":
+			if r.VersionSequence > 0 {
+				v = strconv.FormatInt(r.VersionSequence, 10)
+			} else {
+				v = ""
+			}
 		case "${releaseId}":
 			v = r.ReleaseID
 		case "${runId}":
