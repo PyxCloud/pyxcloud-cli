@@ -44,7 +44,7 @@ This is the M0 local feedback-loop smoke. It is not a claim of full end-to-end p
 
 `scripts/specops-m1.py` runs the local discovery, documentation, compilation and scope path through the integrated `passo` CLI. Its stable default project is `specops-local-fixture-walk`, deliberately separate from the earlier M0 smoke project. It reuses the M0 PKCE and project-list helpers. The only REST write is the harness bootstrap upload for `fixtures/specops-acceptance.md`; it is labelled as a user acceptance fixture, never as repository proof. The source-fixture SHA is recorded as a checksum of that local fixture file, not as discovered repository provenance.
 
-Every CLI response is schema/profile/project validated where the command emits a command envelope. The discovery run must succeed with a source snapshot containing a repository commit. Documentation is generated only when absent, stale, or from a different run. Compilation names the fixture document ID and deterministic `idempotencyKey`; a second compile must return the same compilation ID and revision. Scope derivation and apply use the CLI; a CLI run plan then checks the canonical project state contains the derived candidate ID, followed by a project journey read. Polls, subprocesses, HTTP requests, and total runtime have explicit deadlines. CLI stdout/stderr and API response bodies are never copied to evidence or printed on error.
+Every CLI response is schema/profile/project validated where the command emits a command envelope. The discovery run must succeed with a source snapshot containing the pinned fixture repository commit. Documentation is generated only when absent, stale, or from a different run. Compilation sends only `documentIds`; the CLI supplies its managed deterministic `idempotencyKey` from that identical canonical body on both calls. A second compile must return the same compilation ID and revision. Scope derivation and apply use the CLI; a CLI run plan then checks the canonical project state contains the derived candidate ID, followed by a project journey read. Polls, subprocesses, HTTP requests, and total runtime have explicit deadlines. CLI stdout/stderr and API response bodies are never copied to evidence or printed on error.
 
 ### Measure → act → verify
 
@@ -76,7 +76,7 @@ Every CLI response is schema/profile/project validated where the command emits a
      --evidence-dir /tmp/specops-m1-evidence
   ```
 
-By default, the realm and health source fixtures resolve from the workspace's local `.worktrees/specops-backend/sandbox` checkout; pass explicit `--realm-fixture` and `--source-fixture` paths when that checkout lives elsewhere.
+By default, the harness searches ancestor workspace roots for a local `.worktrees/specops-backend/sandbox` or `platform/pyx-backend/sandbox` fixture checkout; pass explicit `--realm-fixture` and `--source-fixture` paths when that checkout lives elsewhere.
 
 4. Verify compact evidence only:
 

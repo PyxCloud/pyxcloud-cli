@@ -1,4 +1,5 @@
 import importlib.util
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -60,6 +61,24 @@ class FixtureSelectionTests(unittest.TestCase):
         for bad in (rows + rows, [{**rows[0], "sizeBytes": 11}], [{**rows[0], "status": "FAILED"}]):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 m1.unique_fixture_document(bad, "specops-acceptance.md", 10)
+
+    def test_compile_body_leaves_idempotency_key_to_cli(self):
+        self.assertEqual(m1.compile_input("doc-1"), {"documentIds": ["doc-1"]})
+        with self.assertRaises(ValueError):
+            m1.compile_input("")
+
+    def test_finds_workspace_root_above_linked_worktree(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            sandbox = root / ".worktrees/specops-backend/sandbox"
+            fixture = sandbox / "specops/fixture/files/tinyGoApp.go"
+            fixture.parent.mkdir(parents=True)
+            fixture.write_text("package main")
+            (sandbox / "realm-export.json").write_text("{}")
+            cli_script = root / ".worktrees/specops-m1-harness/scripts/specops-m1.py"
+            cli_script.parent.mkdir(parents=True)
+            cli_script.touch()
+            self.assertEqual(m1.find_fixture_backend(cli_script), sandbox.resolve())
 
 
 if __name__ == "__main__":

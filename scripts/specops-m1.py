@@ -138,6 +138,24 @@ def validate_nonempty_scope(data):
     return candidate_id
 
 
+def compile_input(document_id):
+    if not isinstance(document_id, str) or not document_id.strip():
+        raise ValueError("fixture document ID is missing")
+    # The CLI owns idempotencyKey; this identical canonical body lets it derive
+    # the same managed key on a replay without sending the forbidden key itself.
+    return {"documentIds": [document_id]}
+
+
+def find_fixture_backend(script_path):
+    for ancestor in Path(script_path).resolve().parents:
+        for relative in (".worktrees/specops-backend/sandbox", "platform/pyx-backend/sandbox"):
+            candidate = ancestor / relative
+            if ((candidate / "realm-export.json").is_file()
+                    and (candidate / "specops/fixture/files/tinyGoApp.go").is_file()):
+                return candidate
+    raise FileNotFoundError("workspace fixture checkout not found; pass explicit fixture paths")
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with path.open("rb") as source:
@@ -290,9 +308,8 @@ class Harness:
                 return "current"
         return "pending"
 
-    def compile_and_derive(self, doc_id, doc_hash):
-        idem = "specops-m1-" + hashlib.sha256((self.project_id + ":" + doc_id + ":" + doc_hash).encode()).hexdigest()
-        body = {"documentIds": [doc_id], "idempotencyKey": idem}
+    def compile_and_derive(self, doc_id):
+        body = compile_input(doc_id)
         input_path = self.tempdir / "compile.json"
         input_path.write_text(json.dumps(body, separators=(",", ":")), encoding="utf-8")
         os.chmod(input_path, 0o600)
@@ -355,15 +372,17 @@ def main():
     ap.add_argument("--cli", required=True, help="path to integrated passo CLI executable")
     ap.add_argument("--backend", default=DEFAULT_API)
     ap.add_argument("--issuer", default=DEFAULT_ISSUER)
-    workspace = Path(__file__).resolve().parents[2]
-    fixture_backend = workspace / ".worktrees/specops-backend/sandbox"
-    ap.add_argument("--realm-fixture", type=Path, default=fixture_backend / "realm-export.json")
+    ap.add_argument("--realm-fixture", type=Path)
     ap.add_argument("--acceptance-fixture", type=Path, default=Path(__file__).resolve().parents[1] / "fixtures/specops-acceptance.md")
-    ap.add_argument("--source-fixture", type=Path, default=fixture_backend / "specops/fixture/files/tinyGoApp.go")
+    ap.add_argument("--source-fixture", type=Path)
     ap.add_argument("--evidence-dir", type=Path, required=True)
     ap.add_argument("--project-name", default=DEFAULT_PROJECT)
     ap.add_argument("--max-runtime", type=int, default=TOTAL_TIMEOUT_SECONDS)
     args = ap.parse_args()
+    if args.realm_fixture is None or args.source_fixture is None:
+        fixture_backend = find_fixture_backend(__file__)
+        args.realm_fixture = args.realm_fixture or fixture_backend / "realm-export.json"
+        args.source_fixture = args.source_fixture or fixture_backend / "specops/fixture/files/tinyGoApp.go"
     helpers = smoke_helpers()
     api = helpers.local_http_url(args.backend)
     issuer = helpers.local_http_url(args.issuer, allow_sso=True)
@@ -413,7 +432,7 @@ def main():
         harness.outcomes["documentId"] = doc_id
         run_id = harness.discover()
         harness.docs_for_run(run_id)
-        harness.compile_and_derive(doc_id, harness.outcomes["fixtureContentSha256"])
+        harness.compile_and_derive(doc_id)
         elapsed = time.monotonic() - started
         if elapsed > args.max_runtime:
             raise TimeoutError("overall M1 runtime deadline exceeded")
