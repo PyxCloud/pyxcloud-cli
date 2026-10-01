@@ -351,6 +351,8 @@ def verify_docker_forwarder():
     return True
 
 
+_container_guard_cache = {}
+
 def verify_launcher(backend_repo: Path, runtime_dir: Path):
     launcher, launcher_sha = validate_tracked_file(backend_repo, "sandbox/specops/start-backend.py")
     output = _run_fixed([sys.executable, str(launcher), "status", "--runtime-dir", str(runtime_dir)],
@@ -360,6 +362,8 @@ def verify_launcher(backend_repo: Path, runtime_dir: Path):
     except json.JSONDecodeError:
         raise FeedbackError("native backend status metadata is invalid") from None
     validate_launcher_status(status)
+    if status.get("guard") == {"name": "docker-internal-network", "version": 1, "selfTest": "passed"}:
+        _container_guard_cache[str(Path(runtime_dir).resolve())] = status["guard"]
     guard = read_launcher_guard(backend_repo, Path(runtime_dir))
     return {"status": "running", "port": 16080, "guard": guard,
             "launcher": launcher, "launcherSha256": launcher_sha}
@@ -389,6 +393,9 @@ def validate_launcher_guard(metadata, profile_bytes, runtime_dir):
 def read_launcher_guard(backend_repo: Path, runtime_dir: Path):
     if (runtime_dir / "container.json").is_file():
         launcher, _ = validate_tracked_file(backend_repo, "sandbox/specops/container-sandbox.py")
+        cached = _container_guard_cache.get(str(runtime_dir.resolve()))
+        if cached is not None:
+            return dict(cached)
         result = json.loads(_run_fixed([sys.executable, str(launcher), "status", "--runtime-dir", str(runtime_dir)], timeout=40))
         validate_launcher_status(result)
         guard = result.get("guard", {})
@@ -823,12 +830,14 @@ def run_walk(args, checks, *, started=None):
                              "compilationRevision": m1["compilationRevision"],
                              "publicStateVerified": m1_evidence["publicStateVerified"],
                              "evidenceSha256": m1_evidence["sha256"]}
+        verify_launcher(checks["backendRepo"], checks["runtimeDir"])
         record["elapsedSeconds"] = round(time.monotonic() - started, 3)
         record["status"] = "passed"
     except Exception as exc:
         error = exc
         record["status"] = "failed"
         record["failureType"] = type(exc).__name__
+        verify_launcher(checks["backendRepo"], checks["runtimeDir"])
         record["elapsedSeconds"] = round(time.monotonic() - started, 3)
     try:
         path = write_evidence(Path(args.runtime_dir).expanduser(), record)
