@@ -830,14 +830,14 @@ def run_walk(args, checks, *, started=None):
                              "compilationRevision": m1["compilationRevision"],
                              "publicStateVerified": m1_evidence["publicStateVerified"],
                              "evidenceSha256": m1_evidence["sha256"]}
-        verify_launcher(checks["backendRepo"], checks["runtimeDir"])
+        if checks["checks"]["backendGuard"].get("name") == "docker-internal-network":
+            verify_launcher(checks["backendRepo"], checks["runtimeDir"])
         record["elapsedSeconds"] = round(time.monotonic() - started, 3)
         record["status"] = "passed"
     except Exception as exc:
         error = exc
         record["status"] = "failed"
         record["failureType"] = type(exc).__name__
-        verify_launcher(checks["backendRepo"], checks["runtimeDir"])
         record["elapsedSeconds"] = round(time.monotonic() - started, 3)
     try:
         path = write_evidence(Path(args.runtime_dir).expanduser(), record)
