@@ -458,7 +458,7 @@ def prepare_feedback_role(checks, *, timeout=20):
                "--runtime-dir", str(checks["runtimeDir"]), "--read-dir", str(checks["cliRepo"]),
                "--read-dir", str(python_prefix), "--executable", str(python),
                "--read-file", str(checks["cli"]), "--validate-only"]
-    files = [checks["fixtures"]["realm"], checks["fixtures"]["source"]]
+    files = [checks["fixtures"][key] for key in ("realm", "source", "manifest")]
     command[-1:-1] = [arg for p in files for arg in ("--read-file", str(p))]
     _run_fixed(command, timeout=timeout, env=_safe_env())
     role = read_feedback_role(checks["runtimeDir"], checks["cliRepo"], python_prefix, checks["cli"], files)
@@ -649,7 +649,7 @@ def assert_execution_provenance(checks):
     if "feedbackClientGuard" in checks["checks"]:
         client = read_feedback_role(checks["runtimeDir"], checks["cliRepo"],
                                     checks["feedbackPythonPrefix"], checks["cli"],
-                                    [checks["fixtures"]["realm"], checks["fixtures"]["source"]])
+                                    [checks["fixtures"][key] for key in ("realm", "source", "manifest")])
         if client != checks["checks"]["feedbackClientGuard"]:
             raise FeedbackError("feedback-client OS guard policy changed after preflight")
 
@@ -683,7 +683,7 @@ def guarded_child_argv(checks, script_path, argv):
                "--runtime-dir", str(Path(checks["runtimeDir"]).resolve()),
                "--read-dir", str(checks["cliRepo"].resolve()), "--read-dir", str(prefix),
                "--executable", str(python), "--read-file", str(cli), "--"]
-    guarded[-1:-1] = [arg for p in [checks["fixtures"]["realm"], checks["fixtures"]["source"]] for arg in ("--read-file", str(p))]
+    guarded[-1:-1] = [arg for p in [checks["fixtures"][key] for key in ("realm", "source", "manifest")] for arg in ("--read-file", str(p))]
     return [*guarded, *child_argv]
 
 
