@@ -444,7 +444,7 @@ class ChildProcessTests(unittest.TestCase):
             script = Path(__file__).resolve().with_name("specops-smoke.py")
             checks = {"backendRepo": Path(td) / "backend", "runtimeDir": Path(td) / "runtime",
                       "launcher": Path(td) / "backend/sandbox/specops/start-backend.py",
-                      "cliRepo": Path(__file__).resolve().parents[1], "cli": cli}
+                      "cliRepo": Path(__file__).resolve().parents[1], "cli": cli, "fixtures": {"realm":Path(td)/"realm.json", "source":Path(td)/"source.json"}}
             command = [str(__import__("sys").executable), str(script), "--backend", feedback.API]
             with mock.patch.object(feedback.sys, "platform", "darwin"):
                 argv = feedback.guarded_child_argv(checks, script, command)

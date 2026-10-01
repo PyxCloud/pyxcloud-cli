@@ -414,12 +414,12 @@ def read_launcher_guard(backend_repo: Path, runtime_dir: Path):
     return validate_launcher_guard(metadata, profile, runtime_dir)
 
 
-def validate_feedback_role(metadata, profile_bytes, *, runtime_dir, cli_repo, python_prefix, cli_binary):
+def validate_feedback_role(metadata, profile_bytes, *, runtime_dir, cli_repo, python_prefix, cli_binary, fixture_files=()):
     roles = metadata.get("roles") if isinstance(metadata, dict) else None
     role = roles.get("feedback-client") if isinstance(roles, dict) else None
     expected_hash = hashlib.sha256(profile_bytes).hexdigest()
     expected_reads = [str(Path(cli_repo).resolve()), str(Path(python_prefix).resolve())]
-    expected_files = [str(Path(cli_binary).resolve())]
+    expected_files = [str(Path(cli_binary).resolve()), *(str(Path(p).resolve()) for p in fixture_files)]
     if (not isinstance(role, dict) or role.get("profileFile") != "feedback-client.sb"
             or role.get("profileSha256") != expected_hash or role.get("selfTest") != "passed"
             or role.get("readDirectories") != expected_reads or role.get("readFiles") != expected_files
@@ -430,7 +430,7 @@ def validate_feedback_role(metadata, profile_bytes, *, runtime_dir, cli_repo, py
             "selfTest": "passed", "outbound": role["outbound"], "inbound": []}
 
 
-def read_feedback_role(runtime_dir, cli_repo, python_prefix, cli_binary):
+def read_feedback_role(runtime_dir, cli_repo, python_prefix, cli_binary, fixture_files=()):
     runtime = Path(runtime_dir)
     metadata_path = runtime / "backend.json"
     profile_path = runtime / "feedback-client.sb"
@@ -447,7 +447,7 @@ def read_feedback_role(runtime_dir, cli_repo, python_prefix, cli_binary):
     except (OSError, ValueError, UnicodeError):
         raise FeedbackError("feedback-client guard metadata is unavailable") from None
     return validate_feedback_role(metadata, profile, runtime_dir=runtime_dir, cli_repo=cli_repo,
-                                  python_prefix=python_prefix, cli_binary=cli_binary)
+                                  python_prefix=python_prefix, cli_binary=cli_binary, fixture_files=fixture_files)
 
 
 def prepare_feedback_role(checks, *, timeout=20):
@@ -458,8 +458,10 @@ def prepare_feedback_role(checks, *, timeout=20):
                "--runtime-dir", str(checks["runtimeDir"]), "--read-dir", str(checks["cliRepo"]),
                "--read-dir", str(python_prefix), "--executable", str(python),
                "--read-file", str(checks["cli"]), "--validate-only"]
+    files = [checks["fixtures"]["realm"], checks["fixtures"]["source"]]
+    command[-1:-1] = [arg for p in files for arg in ("--read-file", str(p))]
     _run_fixed(command, timeout=timeout, env=_safe_env())
-    role = read_feedback_role(checks["runtimeDir"], checks["cliRepo"], python_prefix, checks["cli"])
+    role = read_feedback_role(checks["runtimeDir"], checks["cliRepo"], python_prefix, checks["cli"], files)
     checks["checks"]["feedbackClientGuard"] = role
     checks["feedbackPythonPrefix"] = python_prefix
     return role
@@ -646,7 +648,8 @@ def assert_execution_provenance(checks):
         raise FeedbackError("owned backend OS guard policy changed after preflight")
     if "feedbackClientGuard" in checks["checks"]:
         client = read_feedback_role(checks["runtimeDir"], checks["cliRepo"],
-                                    checks["feedbackPythonPrefix"], checks["cli"])
+                                    checks["feedbackPythonPrefix"], checks["cli"],
+                                    [checks["fixtures"]["realm"], checks["fixtures"]["source"]])
         if client != checks["checks"]["feedbackClientGuard"]:
             raise FeedbackError("feedback-client OS guard policy changed after preflight")
 
@@ -680,6 +683,7 @@ def guarded_child_argv(checks, script_path, argv):
                "--runtime-dir", str(Path(checks["runtimeDir"]).resolve()),
                "--read-dir", str(checks["cliRepo"].resolve()), "--read-dir", str(prefix),
                "--executable", str(python), "--read-file", str(cli), "--"]
+    guarded[-1:-1] = [arg for p in [checks["fixtures"]["realm"], checks["fixtures"]["source"]] for arg in ("--read-file", str(p))]
     return [*guarded, *child_argv]
 
 
