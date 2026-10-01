@@ -1,0 +1,543 @@
+{
+  "components": {
+    "schemas": {
+      "Attempt": {
+        "properties": {
+          "number": 0,
+          "startedAt": "",
+          "state": "",
+          "steps": []
+        },
+        "type": "object"
+      },
+      "CancelCommand": {
+        "properties": {
+          "deploymentId": "",
+          "expectedVersion": 0,
+          "idempotencyKey": ""
+        },
+        "type": "object"
+      },
+      "Capability": {
+        "enum": [
+          "CAN_START",
+          "CAN_CANCEL",
+          "CAN_RETRY",
+          "CAN_ROLLBACK",
+          "CAN_PROMOTE"
+        ],
+        "type": "string"
+      },
+      "Checkpoint": {
+        "properties": {
+          "at": "",
+          "attempt": 0,
+          "resumable": false,
+          "step": ""
+        },
+        "type": "object"
+      },
+      "Deployment": {
+        "properties": {
+          "artifactDigests": [],
+          "attempts": [],
+          "capabilities": [],
+          "checkpoints": [],
+          "createdAt": "",
+          "deploymentId": "",
+          "projectId": 0,
+          "projectVersionId": 0,
+          "revisionId": "",
+          "runner": "",
+          "state": "",
+          "updatedAt": "",
+          "visibility": ""
+        },
+        "type": "object"
+      },
+      "DeploymentState": {
+        "enum": [
+          "PENDING",
+          "PREFLIGHT",
+          "RUNNING",
+          "SUCCEEDED",
+          "FAILED",
+          "CANCELLED",
+          "ROLLED_BACK"
+        ],
+        "type": "string"
+      },
+      "Error": {
+        "properties": {
+          "code": {
+            "enum": [
+              "DEPLOY_INVALID_REQUEST",
+              "DEPLOY_STALE_VERSION",
+              "DEPLOY_REVISION_UNKNOWN",
+              "DEPLOY_TERMINAL_STATE",
+              "DEPLOY_CAPABILITY_UNAVAILABLE",
+              "DEPLOY_UNKNOWN_VOCABULARY",
+              "DEPLOY_PREFLIGHT_FAILED",
+              "DEPLOY_CHECKPOINT_UNKNOWN",
+              "DEPLOY_ATTEMPT_REWIND",
+              "DEPLOY_PROMOTION_DIGEST_MISMATCH",
+              "DEPLOY_HEALTH_EVIDENCE_MISSING",
+              "DEPLOY_VISIBILITY_STATE_CONFLATION",
+              "DEPLOY_CLIENT_COMPUTED_FIELD",
+              "DEPLOY_ADAPTER_OWNS_STATE",
+              "DEPLOY_IDEMPOTENCY_CONFLICT"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "HealthEvidence": {
+        "properties": {
+          "endpoint": "",
+          "observedAt": "",
+          "statusCode": 0
+        },
+        "type": "object"
+      },
+      "PreflightReport": {
+        "properties": {
+          "blockers": [],
+          "checkedAt": "",
+          "passed": false
+        },
+        "type": "object"
+      },
+      "PromotionCommand": {
+        "properties": {
+          "artifactDigests": [],
+          "expectedVersion": 0,
+          "idempotencyKey": "",
+          "sourceDeploymentId": "",
+          "targetRevisionId": ""
+        },
+        "type": "object"
+      },
+      "RetryCommand": {
+        "properties": {
+          "attempt": 0,
+          "deploymentId": "",
+          "expectedVersion": 0,
+          "fromCheckpointStep": "",
+          "idempotencyKey": ""
+        },
+        "type": "object"
+      },
+      "RollbackCommand": {
+        "properties": {
+          "deploymentId": "",
+          "expectedVersion": 0,
+          "idempotencyKey": "",
+          "toDeploymentId": ""
+        },
+        "type": "object"
+      },
+      "SetVisibilityCommand": {
+        "properties": {
+          "deploymentId": "",
+          "expectedVersion": 0,
+          "idempotencyKey": "",
+          "visibility": ""
+        },
+        "type": "object"
+      },
+      "StartCommand": {
+        "properties": {
+          "expectedVersion": 0,
+          "idempotencyKey": "",
+          "projectId": 0,
+          "projectVersionId": 0,
+          "revisionId": "",
+          "runner": ""
+        },
+        "type": "object"
+      },
+      "StepName": {
+        "enum": [
+          "PREFLIGHT",
+          "PROVISION",
+          "MIGRATE",
+          "RELEASE",
+          "HEALTH_CHECK",
+          "PROMOTE",
+          "ROLLBACK"
+        ],
+        "type": "string"
+      },
+      "StepStatus": {
+        "properties": {
+          "name": "",
+          "state": ""
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "REST face of the canonical Deploy aggregate (epic #1421). Deployments have exactly four terminal states and a terminal deployment is never mutated. Visibility is a separate axis from deployment state and is never derived from it. Capabilities are backend-derived: the browser never computes whether cancel, retry, rollback or promote is available, and there is no percentage and no client-side ETA in this surface. Adapters never own deployment state. Retry resumes from a durable checkpoint into a NEW numbered attempt. Promotion reuses the exact source artifact digests and never rebuilds. Success requires post-deploy health evidence carried separately from state.",
+    "title": "passo.build deployment API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/vibe/deployments/{deploymentId}": {
+      "get": {
+        "operationId": "getDeploymentStatus",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "deployment"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_REVISION_UNKNOWN"
+          }
+        },
+        "summary": "Deployment status with backend-derived capabilities"
+      }
+    },
+    "/vibe/deployments/{deploymentId}/cancel": {
+      "post": {
+        "operationId": "cancelDeployment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "cancelled"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_TERMINAL_STATE"
+          }
+        }
+      }
+    },
+    "/vibe/deployments/{deploymentId}/promote": {
+      "post": {
+        "operationId": "promoteDeployment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PromotionCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "promotion accepted"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_PROMOTION_DIGEST_MISMATCH"
+          }
+        },
+        "summary": "Promote the exact source artifact digests; never rebuilds"
+      }
+    },
+    "/vibe/deployments/{deploymentId}/retry": {
+      "post": {
+        "operationId": "retryDeployment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetryCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "retry accepted"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_ATTEMPT_REWIND"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_CHECKPOINT_UNKNOWN"
+          }
+        },
+        "summary": "Open a NEW attempt resuming from a durable checkpoint"
+      }
+    },
+    "/vibe/deployments/{deploymentId}/rollback": {
+      "post": {
+        "operationId": "rollbackDeployment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "rollback accepted"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_CAPABILITY_UNAVAILABLE"
+          }
+        }
+      }
+    },
+    "/vibe/deployments/{deploymentId}/visibility": {
+      "post": {
+        "operationId": "setDeploymentVisibility",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetVisibilityCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "deployment with the new visibility"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_UNKNOWN_VOCABULARY"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_STALE_VERSION"
+          }
+        },
+        "summary": "Set the independent live/hidden visibility axis; never touches deployment state (#1529)"
+      }
+    },
+    "/vibe/projects/{projectId}/deployments": {
+      "get": {
+        "operationId": "listDeployments",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/Deployment"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "deployments"
+          }
+        },
+        "summary": "List deployments for a project"
+      },
+      "post": {
+        "operationId": "startDeployment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Deployment"
+                }
+              }
+            },
+            "description": "accepted"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_INVALID_REQUEST"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_STALE_VERSION"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_UNKNOWN_VOCABULARY"
+          }
+        },
+        "summary": "Start a deployment for one immutable environment revision"
+      }
+    },
+    "/vibe/projects/{projectId}/deployments/preflight": {
+      "post": {
+        "operationId": "preflightDeployment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightReport"
+                }
+              }
+            },
+            "description": "preflight report"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "typed error DEPLOY_INVALID_REQUEST"
+          }
+        },
+        "summary": "Refusal-before-change checks; never mutates"
+      }
+    }
+  }
+}

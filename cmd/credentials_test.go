@@ -135,7 +135,7 @@ func TestParsePayloadInvalidJSON(t *testing.T) {
 
 func TestDetectMigration(t *testing.T) {
 	tests := []struct {
-		version    string
+		version     string
 		isMigration bool
 	}{
 		{"0.1.0", false},

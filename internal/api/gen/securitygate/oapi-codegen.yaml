@@ -1,0 +1,6 @@
+# oapi-codegen config for api/contracts/securitygate.openapi.json. Regenerate: go generate ./internal/api/gen/...
+package: securitygate
+generate:
+  models: true
+  client: true
+output: securitygate.gen.go

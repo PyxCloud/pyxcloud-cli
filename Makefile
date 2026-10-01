@@ -1,4 +1,4 @@
-.PHONY: build clean
+.PHONY: build clean generate sync-contracts
 
 BINARY_NAME=pyxcloud
 
@@ -9,6 +9,15 @@ LDFLAGS=-s -w
 
 build:
 	go build -ldflags="$(LDFLAGS)" -o $(BINARY_NAME) .
+
+# Regenerate the typed API clients (internal/api/gen/...) from api/contracts.
+generate:
+	go generate ./internal/api/gen/...
+
+# Re-vendor api/contracts at the pinned pyx-backend SHA (api/contracts/SOURCE).
+# Bump the pin: scripts/sync-contracts.sh --ref <branch|sha> && make generate
+sync-contracts:
+	scripts/sync-contracts.sh
 
 release-local:
 	docker run --rm --privileged \

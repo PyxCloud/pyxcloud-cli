@@ -235,7 +235,7 @@ func init() {
 	secretsCmd.AddCommand(secretsSetCmd)
 	secretsCmd.AddCommand(secretsListCmd)
 	secretsCmd.AddCommand(secretsDeleteCmd)
-	
+
 	secretsImportCmd.Flags().StringP("provider", "p", "", "Cloud provider to import secrets for")
 	secretsCmd.AddCommand(secretsImportCmd)
 

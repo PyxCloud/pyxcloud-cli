@@ -7,13 +7,16 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/pyxcloud/pyxcloud-cli/internal/api/gen/journey"
 	"github.com/pyxcloud/pyxcloud-cli/internal/config"
 )
 
 // journeyResponseFixture mirrors the backend journey read contract:
 // apicontract.Envelope[journeyreadcontract.JourneyRead]
 // (platform/pyx-backend go/internal/apicontract/envelope.go,
-// go/internal/journeyreadcontract/dto.go).
+// go/internal/journeyreadcontract/dto.go; vendored as
+// api/contracts/journey.openapi.json). The envelope version is numeric
+// (apicontract.Version int64, JourneyEnvelope.version int64).
 const journeyResponseFixture = `{
   "data": {
     "projectId": 42,
@@ -28,7 +31,7 @@ const journeyResponseFixture = `{
   "capabilities": [],
   "blockers": [],
   "freshness": {"asOf":"2026-09-29T11:00:00Z"},
-  "version": {"api":1}
+  "version": 1
 }`
 
 // stubJourneyServer serves the fixture (or 401) as the journey endpoint would.
@@ -81,19 +84,19 @@ func TestPassoStatusJSONShape(t *testing.T) {
 	}
 
 	var payload struct {
-		Journey    journeyRead   `json:"journey"`
-		NextAction primaryAction `json:"nextAction"`
+		Journey    journey.JourneyRead   `json:"journey"`
+		NextAction journey.PrimaryAction `json:"nextAction"`
 	}
 	if err := json.Unmarshal([]byte(out.String()), &payload); err != nil {
 		t.Fatalf("decode --json output: %v\noutput:\n%s", err, out.String())
 	}
-	if payload.Journey.Stage != "deploy" || payload.Journey.SubState != "deploy.in_progress" {
-		t.Errorf("journey stage/subState = %q/%q", payload.Journey.Stage, payload.Journey.SubState)
+	if deref(payload.Journey.Stage) != "deploy" || deref(payload.Journey.SubState) != "deploy.in_progress" {
+		t.Errorf("journey stage/subState = %q/%q", deref(payload.Journey.Stage), deref(payload.Journey.SubState))
 	}
-	if payload.Journey.ProjectId != 42 || payload.Journey.Version == nil || payload.Journey.Version.Sequence != 7 {
+	if deref(payload.Journey.ProjectId) != 42 || payload.Journey.Version == nil || deref(payload.Journey.Version.Sequence) != 7 {
 		t.Errorf("journey project/version mismatch: %+v", payload.Journey.Version)
 	}
-	if payload.NextAction.Key != "deploy.retry" || !payload.NextAction.Allowed {
+	if deref(payload.NextAction.Key) != "deploy.retry" || !deref(payload.NextAction.Allowed) {
 		t.Errorf("nextAction = %+v", payload.NextAction)
 	}
 	// Contract field names must be preserved verbatim (no invented fields):

@@ -185,8 +185,8 @@ func setupSSHClient(initMsg InitPayload) (*ssh.Client, error) {
 	}
 
 	config := &ssh.ClientConfig{
-		User: initMsg.User,
-		Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+		User:            initMsg.User,
+		Auth:            []ssh.AuthMethod{ssh.PublicKeys(signer)},
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
 	}
 

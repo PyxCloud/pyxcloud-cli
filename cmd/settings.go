@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"github.com/spf13/cobra"
 	"os"
 	"strings"
 	"text/tabwriter"
-	"github.com/spf13/cobra"
 )
 
 const (

@@ -1,0 +1,6 @@
+# oapi-codegen config for api/contracts/specops-transitions.openapi.json. Regenerate: go generate ./internal/api/gen/...
+package: specopstransitions
+generate:
+  models: true
+  client: true
+output: specopstransitions.gen.go

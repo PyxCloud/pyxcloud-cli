@@ -1,0 +1,4 @@
+# Vendored pyx-backend OpenAPI contracts. Managed by scripts/sync-contracts.sh; do not edit by hand.
+repo=PyxCloud/pyx-backend
+path=contracts
+sha=1d30be0a2d2f8699d139f01063b5c27de177092a
