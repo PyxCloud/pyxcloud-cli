@@ -132,7 +132,7 @@ def project_rows(response: requests.Response):
 
 
 def project_identity(row):
-    return str(row.get("name", "")), row.get("id", row.get("projectId"))
+    return str(row.get("name", row.get("projectName", ""))), row.get("id", row.get("projectId"))
 
 
 def child_env(token: str, api: str, issuer: str):
