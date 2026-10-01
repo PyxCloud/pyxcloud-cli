@@ -1,75 +1,36 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/pyxcloud/pyxcloud-cli/internal/api"
+	"github.com/pyxcloud/pyxcloud-cli/internal/api/gen/journey"
 	"github.com/pyxcloud/pyxcloud-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 
 // passo status reads the journey read endpoint (backend
-// go/internal/journeyread: GET /vibe/projects/:id/journey) and reports the
+// go/internal/journeyread: GET /vibe/projects/:id/journey) through the client
+// generated from the vendored contract api/contracts/journey.openapi.json
+// (package internal/api/gen/journey, operationId getJourney) and reports the
 // journey stage plus the next action. Exit codes: 0 ok, 10 blocked,
 // 20 not authenticated, 30 other error.
-
-// The types below mirror the backend journey contract so the JSON shape is
-// the contract's, not an invented one:
-//   - apicontract.Envelope[T] (platform/pyx-backend go/internal/apicontract/envelope.go)
-//   - journeyreadcontract.JourneyRead (go/internal/journeyreadcontract/dto.go)
-//   - journeyreadcontract.PrimaryAction (dto.go)
 //
-// Facts is passed through verbatim (json.RawMessage) — the CLI never
-// re-shapes server-owned fields.
-type journeyEnvelope struct {
-	Data journeyRead `json:"data"`
-}
+// The typed JourneyEnvelope drives the CLI's own decisions (stage present,
+// next action allowed, needs-you pending). The --json payload is cut from the
+// raw response body instead, so server-owned fields (facts, and anything a
+// newer backend adds) are passed through verbatim and never re-shaped by the
+// generated types.
 
-type journeyRead struct {
-	ProjectId     int64           `json:"projectId"`
-	Version       *versionRef     `json:"version"`
-	Stage         string          `json:"stage"`
-	SubState      string          `json:"subState,omitempty"`
-	PrimaryAction primaryAction   `json:"primaryAction"`
-	NeedsYou      []needsYouItem  `json:"needsYou"`
-	Facts         json.RawMessage `json:"facts"`
-	Projection    projection      `json:"projection"`
-}
-
-// primaryAction mirrors journeyreadcontract.PrimaryAction.
-type primaryAction struct {
-	Key     string `json:"key"`
-	Label   string `json:"label"`
-	Href    string `json:"href"`
-	Allowed bool   `json:"allowed"`
-	Reason  string `json:"reason,omitempty"`
-}
-
-type needsYouItem struct {
-	Kind    string `json:"kind"`
-	Message string `json:"message"`
-	Href    string `json:"href"`
-}
-
-// versionRef mirrors journeyreadcontract.VersionRef.
-type versionRef struct {
-	Id       string `json:"id"`
-	Label    string `json:"label"`
-	Sequence int    `json:"sequence"`
-	LockedAt string `json:"lockedAt,omitempty"`
-}
-
-type projection struct {
-	Macro string `json:"macro"`
-	Micro string `json:"micro,omitempty"`
-}
-
-// passoStatusOutput is the --json payload: the journey plus its next action.
+// passoStatusOutput is the --json payload: the journey plus its next action,
+// both verbatim from the response envelope's data.
 type passoStatusOutput struct {
-	Journey    journeyRead   `json:"journey"`
-	NextAction primaryAction `json:"nextAction"`
+	Journey    json.RawMessage `json:"journey"`
+	NextAction json.RawMessage `json:"nextAction"`
 }
 
 var passoCmd = &cobra.Command{
@@ -88,6 +49,10 @@ func runPassoStatus(cmd *cobra.Command, args []string) error {
 	asJSON, _ := cmd.Flags().GetBool("json")
 	if projectID == "" {
 		return &exitError{code: ExitError, msg: "--project is required"}
+	}
+	pid, err := strconv.ParseInt(projectID, 10, 64)
+	if err != nil {
+		return &exitError{code: ExitError, msg: fmt.Sprintf("--project must be a numeric project id, got %q", projectID)}
 	}
 
 	cfg, err := config.LoadProfile(profile)
@@ -109,57 +74,111 @@ func runPassoStatus(cmd *cobra.Command, args []string) error {
 	}
 
 	client := api.NewClientFromConfig(cfg)
-	data, statusCode, err := client.DoRequest(http.MethodGet, "/vibe/projects/"+projectID+"/journey", nil)
+	jc, err := journey.NewClientWithResponses(cfg.APIURL,
+		journey.WithHTTPClient(client.HTTPClient),
+		journey.WithRequestEditorFn(client.Authorize))
+	if err != nil {
+		return &exitError{code: ExitError, msg: fmt.Sprintf("journey client: %v", err)}
+	}
+	resp, err := jc.GetJourneyWithResponse(cmd.Context(), pid)
 	if err != nil {
 		return &exitError{code: ExitError, msg: fmt.Sprintf("journey request: %v", err)}
 	}
-	if statusCode == http.StatusUnauthorized {
+	if resp.StatusCode() == http.StatusUnauthorized {
 		return &exitError{code: ExitNotAuthenticated, msg: "not authenticated (HTTP 401): re-run pyxcloud auth login"}
 	}
-	if statusCode != http.StatusOK {
-		return &exitError{code: ExitError, msg: fmt.Sprintf("journey endpoint returned HTTP %d: %s", statusCode, string(data))}
+	if resp.StatusCode() != http.StatusOK {
+		return &exitError{code: ExitError, msg: fmt.Sprintf("journey endpoint returned HTTP %d: %s", resp.StatusCode(), string(resp.Body))}
 	}
-
-	var env journeyEnvelope
-	if err := json.Unmarshal(data, &env); err != nil {
-		return &exitError{code: ExitError, msg: fmt.Sprintf("decode journey response: %v", err)}
+	if resp.JSON200 == nil || resp.JSON200.Data == nil {
+		return &exitError{code: ExitError, msg: "journey response missing data (contract violation)"}
 	}
-	journey := env.Data
-	if journey.Stage == "" {
+	jr := resp.JSON200.Data
+	if jr.Stage == nil || *jr.Stage == "" {
 		return &exitError{code: ExitError, msg: "journey response missing stage (contract violation)"}
 	}
+	var pa journey.PrimaryAction
+	if jr.PrimaryAction != nil {
+		pa = *jr.PrimaryAction
+	}
+	var needsYou []journey.NeedsYouItem
+	if jr.NeedsYou != nil {
+		needsYou = *jr.NeedsYou
+	}
 
-	out := passoStatusOutput{Journey: journey, NextAction: journey.PrimaryAction}
 	if asJSON {
-		enc := json.NewEncoder(cmd.OutOrStdout())
-		enc.SetIndent("", "  ")
-		if err := enc.Encode(out); err != nil {
+		out, err := rawStatusOutput(resp.Body)
+		if err != nil {
 			return &exitError{code: ExitError, msg: fmt.Sprintf("encode status: %v", err)}
 		}
+		if _, err := cmd.OutOrStdout().Write(out); err != nil {
+			return &exitError{code: ExitError, msg: fmt.Sprintf("write status: %v", err)}
+		}
 	} else {
-		fmt.Printf("Project: %d\n", journey.ProjectId)
-		fmt.Printf("Stage: %s", journey.Stage)
-		if journey.SubState != "" {
-			fmt.Printf(" (%s)", journey.SubState)
+		fmt.Printf("Project: %d\n", deref(jr.ProjectId))
+		fmt.Printf("Stage: %s", *jr.Stage)
+		if jr.SubState != nil && *jr.SubState != "" {
+			fmt.Printf(" (%s)", *jr.SubState)
 		}
 		fmt.Println()
-		if journey.Version != nil {
-			fmt.Printf("Version: %s (v%d)\n", journey.Version.Label, journey.Version.Sequence)
+		if jr.Version != nil {
+			fmt.Printf("Version: %s (v%d)\n", deref(jr.Version.Label), deref(jr.Version.Sequence))
 		}
-		fmt.Printf("Next action: %s — %s", journey.PrimaryAction.Key, journey.PrimaryAction.Label)
-		if !journey.PrimaryAction.Allowed && journey.PrimaryAction.Reason != "" {
-			fmt.Printf(" (blocked: %s)", journey.PrimaryAction.Reason)
+		fmt.Printf("Next action: %s — %s", deref(pa.Key), deref(pa.Label))
+		if !deref(pa.Allowed) && deref(pa.Reason) != "" {
+			fmt.Printf(" (blocked: %s)", *pa.Reason)
 		}
 		fmt.Println()
-		for _, n := range journey.NeedsYou {
-			fmt.Printf("Needs you: [%s] %s (%s)\n", n.Kind, n.Message, n.Href)
+		for _, n := range needsYou {
+			fmt.Printf("Needs you: [%s] %s (%s)\n", deref(n.Kind), deref(n.Message), deref(n.Href))
 		}
 	}
 
-	if !journey.PrimaryAction.Allowed || len(journey.NeedsYou) > 0 {
+	if !deref(pa.Allowed) || len(needsYou) > 0 {
 		return &exitError{code: ExitBlocked, msg: "blocked: the next action is not allowed or needs-you items are pending"}
 	}
 	return nil
+}
+
+// rawStatusOutput builds the indented --json payload from the raw journey
+// envelope, keeping data and data.primaryAction byte-for-byte as served.
+func rawStatusOutput(body []byte) ([]byte, error) {
+	var env struct {
+		Data json.RawMessage `json:"data"`
+	}
+	if err := json.Unmarshal(body, &env); err != nil {
+		return nil, err
+	}
+	var data struct {
+		PrimaryAction json.RawMessage `json:"primaryAction"`
+	}
+	if err := json.Unmarshal(env.Data, &data); err != nil {
+		return nil, err
+	}
+	next := data.PrimaryAction
+	if len(next) == 0 {
+		next = json.RawMessage("null")
+	}
+	compact, err := json.Marshal(passoStatusOutput{Journey: env.Data, NextAction: next})
+	if err != nil {
+		return nil, err
+	}
+	var out bytes.Buffer
+	if err := json.Indent(&out, compact, "", "  "); err != nil {
+		return nil, err
+	}
+	out.WriteByte('\n')
+	return out.Bytes(), nil
+}
+
+// deref returns the pointed-to value, or the zero value for nil. The contract
+// marks no field required, so the generated types are all pointers.
+func deref[T any](p *T) T {
+	var zero T
+	if p == nil {
+		return zero
+	}
+	return *p
 }
 
 func init() {

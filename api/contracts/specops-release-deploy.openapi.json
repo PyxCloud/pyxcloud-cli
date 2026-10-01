@@ -1,0 +1,596 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "passo.build SpecOps release deploy API",
+    "description": "The SpecOps release deploy surface: the release workspace list (one fetch for the whole ReleaseWorkspace page), the deploy preconditions checklist (DEP-14.4, mounted), and the deploy authorization (DEP-14.1, POST …/releases/{releaseId}/deploy — the seal route; its wire DTOs are frozen in go/internal/deploysealcontract/contract.go but the route itself is not mounted yet on origin/main, it is wave-B3/DEP-14.1). NOTE: this spec deliberately does NOT duplicate contracts/deployment.openapi.json, which covers the legacy /vibe/deployments* operational surface.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/projects/{projectId}/releases": {
+      "get": {
+        "operationId": "listProjectReleases",
+        "summary": "One typed fetch of the whole ReleaseWorkspace (features shipped per environment, plus the environments' own state)",
+        "parameters": [
+          {
+            "description": "project id (org-scoped server-side: a cross-org id and a missing id are indistinguishable)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseWorkspaceEnvelope"
+                }
+              }
+            },
+            "description": "the shared apicontract envelope with data = the release workspace read model"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "project not found in the caller's organisation (go/internal/releaseworkspace/readmodel.go:71-73)"
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/releases/{releaseId}/deploy/preconditions": {
+      "get": {
+        "operationId": "getDeployPreconditions",
+        "summary": "The deploy screen's checklist (DEP-14.4): every ✓/✗ line, evaluated, never redefined client-side",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "description": "the release id (UUID)",
+            "in": "path",
+            "name": "releaseId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "description": "required, the closed deployable set (deploy_v1_read.go:85-88)",
+            "in": "query",
+            "name": "environment",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": ["production", "staging"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreconditionsEnvelope"
+                }
+              }
+            },
+            "description": "the checklist inside the shared apicontract envelope; a partly-unavailable source answers 200 with an empty checklist and a dependency_unavailable.deploy_preconditions blocker, never a guessed line (deploy_v1_read.go:126-146)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "invalid_project_id / invalid_environment / invalid_request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "release_not_found (unknown release or foreign org — indistinguishable)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "deploy_preconditions_unavailable"
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/releases/{releaseId}/deploy": {
+      "post": {
+        "operationId": "authorizeReleaseDeploy",
+        "summary": "Authorize & deploy the release (the seal, DEP-14.1/DEP-03.5 — NOT yet mounted on origin/main; wave B3 owns the mount)",
+        "description": "Humans authorize, agents prepare: an agent token is refused not_human. Fail closed with a named reason: every unmet precondition maps to exactly one refusal code from the closed vocabulary, and the zero value of the facts never authorizes. A replayed idempotency key returns the first result and writes nothing. The step-up token travels in the X-StepUp-Token header, never in the body (go/internal/deploysealcontract/contract.go:16-43).",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "in": "path",
+            "name": "releaseId",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "description": "the deploy step-up grant (audience \"deploy\", scope \"release:<releaseId>\") (contract.go:25-29)",
+            "in": "header",
+            "name": "X-StepUp-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AuthorizeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthorizeAcceptedEnvelope"
+                }
+              }
+            },
+            "description": "accepted: buildJobId is set, runId is always null in V1 (the deploy run needs the artifact-set pin, which exists only after the build), journey is the journey read passed through verbatim (deploysealcontract/dto.go:37-61)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            },
+            "description": "invalid_request: malformed environmentKind or idempotencyKey"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            },
+            "description": "not_human, not_project_owner, step_up_required (with a stepUp remedy)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Refusal"
+                }
+              }
+            },
+            "description": "the first unmet precondition (refusal.go:63-76): release_not_deployable, gate_not_evaluated, gate_not_cleared, note_expired, gate_stale, architecture_not_selected, cloud_not_deployable, configuration_not_selected, binding_unverified, secrets_missing, bundle_not_rendered, environment_busy, idempotency_conflict"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["error"]
+      },
+      "Capability": {
+        "description": "apicontract.Capability (go/internal/apicontract/envelope.go:15-19)",
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "allowed": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": ["key", "allowed"]
+      },
+      "Blocker": {
+        "description": "apicontract.Blocker (go/internal/apicontract/envelope.go:22-26)",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "requiredAction": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message", "requiredAction"]
+      },
+      "Freshness": {
+        "description": "apicontract.Freshness (go/internal/apicontract/envelope.go:29-32)",
+        "type": "object",
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "sourceVersion": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": ["asOf", "sourceVersion"]
+      },
+      "EnvelopeMeta": {
+        "description": "the shared envelope parts every workspace answer carries (apicontract.Envelope, envelope.go:37-49)",
+        "type": "object",
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Capability"
+            }
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Blocker"
+            }
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/Freshness"
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": ["capabilities", "blockers", "freshness", "version"]
+      },
+      "Release": {
+        "description": "one passobuild.feature_release row (go/internal/releaseworkspace/readmodel.go:41-50)",
+        "type": "object",
+        "properties": {
+          "featureId": {
+            "type": "string"
+          },
+          "envKind": {
+            "type": "string"
+          },
+          "versionId": {
+            "type": "string"
+          },
+          "versionLabel": {
+            "type": "string"
+          },
+          "releasedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "evidence": {
+            "description": "the evidence the linker recorded (JSON object)",
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": ["featureId", "envKind", "versionId", "versionLabel", "releasedAt", "evidence"]
+      },
+      "ReleaseEnvironment": {
+        "description": "one passobuild.project_environments row, reduced to what the release gates read (readmodel.go:53-59)",
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "promotionStrategy": {
+            "type": "string"
+          },
+          "currentVersionId": {
+            "type": "string"
+          }
+        },
+        "required": ["kind", "status", "promotionStrategy"]
+      },
+      "ReleaseWorkspaceReadModel": {
+        "description": "the whole ReleaseWorkspace payload (go/internal/releaseworkspace/readmodel.go:31-39)",
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "releases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Release"
+            }
+          },
+          "environments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReleaseEnvironment"
+            }
+          }
+        },
+        "required": ["projectId", "organisationId", "releases", "environments"]
+      },
+      "ReleaseWorkspaceEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeMeta"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/ReleaseWorkspaceReadModel"
+              }
+            },
+            "required": ["data"]
+          }
+        ]
+      },
+      "PreconditionItem": {
+        "description": "one ✓/✗ line (go/internal/deploysealcontract/preconditions.go:66-72); refusal and keys are present only when the item is unmet",
+        "type": "object",
+        "properties": {
+          "key": {
+            "description": "the fixed checklist order (preconditions.go:27-33): release_deployable, gate_cleared, architecture_selected, cloud_deployable, configuration_selected, binding_verified, secrets_set",
+            "type": "string",
+            "enum": [
+              "release_deployable",
+              "gate_cleared",
+              "architecture_selected",
+              "cloud_deployable",
+              "configuration_selected",
+              "binding_verified",
+              "secrets_set"
+            ]
+          },
+          "met": {
+            "type": "boolean"
+          },
+          "fixAt": {
+            "description": "the journey stage where an unmet item is fixed (preconditions.go:42-45)",
+            "type": "string",
+            "enum": ["deploy", "gate", "architecture", "cloud"]
+          },
+          "refusal": {
+            "type": "string"
+          },
+          "keys": {
+            "description": "only on secrets_set: the missing secret keys",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["key", "met", "fixAt"]
+      },
+      "Preconditions": {
+        "description": "the checklist data (go/internal/deploysealcontract/preconditions.go:79-85)",
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "environmentKind": {
+            "type": "string",
+            "enum": ["production", "staging"]
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreconditionItem"
+            }
+          }
+        },
+        "required": ["releaseId", "environmentKind", "ready", "evaluatedAt", "items"]
+      },
+      "PreconditionsEnvelope": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeMeta"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/Preconditions"
+              }
+            },
+            "required": ["data"]
+          }
+        ]
+      },
+      "AuthorizeRequest": {
+        "description": "the body of POST …/releases/{releaseId}/deploy (go/internal/deploysealcontract/dto.go:18-22)",
+        "type": "object",
+        "properties": {
+          "environmentKind": {
+            "type": "string",
+            "enum": ["production", "staging"]
+          },
+          "idempotencyKey": {
+            "description": "1-256 printable ASCII characters, no spaces (contract.go:41-43)",
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "pattern": "^[!-~]{1,256}$"
+          }
+        },
+        "required": ["environmentKind", "idempotencyKey"]
+      },
+      "AuthorizeAccepted": {
+        "description": "the data of the 202 (go/internal/deploysealcontract/dto.go:37-61)",
+        "type": "object",
+        "properties": {
+          "buildJobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runId": {
+            "description": "always null in V1",
+            "type": "null"
+          },
+          "journey": {
+            "description": "the journey read (contract C7), passed through verbatim",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "spendAlert": {
+            "description": "optional spend-alert warning (CLD-06.3), never a refusal (dto.go:50-56)",
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": ["spend_above_threshold", "spend_estimate_unavailable", "spend_check_unavailable"]
+              },
+              "message": {
+                "type": "string"
+              },
+              "thresholdMinor": {
+                "type": "integer",
+                "format": "int64",
+                "nullable": true
+              },
+              "estimateMinor": {
+                "type": "integer",
+                "format": "int64",
+                "nullable": true
+              },
+              "currency": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message", "thresholdMinor", "estimateMinor", "currency"]
+          }
+        },
+        "required": ["buildJobId", "runId", "journey"]
+      },
+      "AuthorizeAcceptedEnvelope": {
+        "description": "the 202 body (the seal serves it inside the shared apicontract envelope)",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/EnvelopeMeta"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "data": {
+                "$ref": "#/components/schemas/AuthorizeAccepted"
+              }
+            },
+            "required": ["data"]
+          }
+        ]
+      },
+      "Refusal": {
+        "description": "the refusal wire body of a 400/403/409 (go/internal/deploysealcontract/refusal.go:148-159)",
+        "type": "object",
+        "properties": {
+          "error": {
+            "description": "the closed refusal vocabulary (refusal.go:63-76): step_up_required, not_human, gate_not_evaluated, gate_not_cleared, note_expired, gate_stale, secrets_missing, cloud_not_deployable, binding_unverified, environment_busy, not_project_owner, architecture_not_selected, configuration_not_selected, idempotency_conflict, release_not_deployable, bundle_not_rendered",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "keys": {
+            "description": "only on secrets_missing: the missing secret keys",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "stepUp": {
+            "description": "only on step_up_required (refusal.go:141-146)",
+            "type": "object",
+            "properties": {
+              "tokenEndpoint": {
+                "type": "string"
+              },
+              "audience": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "string"
+              },
+              "header": {
+                "type": "string"
+              }
+            },
+            "required": ["tokenEndpoint", "audience", "scope", "header"]
+          }
+        },
+        "required": ["error", "message"]
+      }
+    }
+  }
+}

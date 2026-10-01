@@ -1,0 +1,660 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "passo.build SpecOps define-analysis API",
+    "description": "The implementation-discovery (define-analysis) flow surface: start a run, follow it (long-poll), approve it (optionally advancing the state machine), retry a failed run, and cancel the ingest. Routes registered in go/internal/resource/vibe/routes.go:430-529, handlers in go/internal/resource/vibe/discovery_routes.go; wire DTOs in go/internal/implementationdiscovery/types.go and contract_approve_advance.go. Requires an Idempotency-Key header on start/retry.",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/vibe/projects/{projectId}/define-analysis": {
+      "post": {
+        "operationId": "startDefineAnalysis",
+        "summary": "Start an implementation discovery run (202; requires the Idempotency-Key header)",
+        "parameters": [
+          {
+            "description": "project id",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "description": "required (discovery_routes.go:421-427); replay of the same key is the idempotency seam",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryRun"
+                }
+              }
+            },
+            "description": "the run row as created (identity fields; report/snapshot payloads follow on GET) (discovery_routes.go:496)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "missing Idempotency-Key, or no repositories connected (no_repositories)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "a run is already in progress (run_in_progress)"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreeDiscoveryCapError"
+                }
+              }
+            },
+            "description": "the organisation's free discovery cap is reached"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "the frozen source manifest could not be captured (source_capture_failed)"
+          }
+        }
+      },
+      "get": {
+        "operationId": "getDefineAnalysis",
+        "summary": "Read the current run, its phase estimates and step progress (supports ?wait=<seconds> long polling, ceiling 20s)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "description": "hold the request open until the run's observable state changes, or at most 20s (discovery_routes.go:516-521)",
+            "in": "query",
+            "name": "wait",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryRead"
+                }
+              }
+            },
+            "description": "run snapshot plus decorative estimates/progress; run is null and status=not_started before the first run (discovery_routes.go:544-558, 594-596)"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "response-budget exhaustion (Retry-After); retry shortly (discovery_routes.go:538-542)"
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/approve": {
+      "post": {
+        "operationId": "approveDefineAnalysis",
+        "summary": "Approve the run's report; ?advance=true also fires the scope.contract.derived transition",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "description": "the only accepted-true value is the literal string \"true\" (contract_approve_advance.go:33-36)",
+            "in": "query",
+            "name": "advance",
+            "schema": {
+              "type": "string",
+              "enum": ["true"]
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveAdvanceResponse"
+                }
+              }
+            },
+            "description": "always 200; the advance tail reports what fired, it never turns a successful approve into an error (contract_approve_advance.go:82-94)"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "malformed body (unknown fields are loud decode errors)"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "unknown run"
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/retry": {
+      "post": {
+        "operationId": "retryDefineAnalysis",
+        "summary": "Retry a failed/stale run (requires the Idempotency-Key header; optional body pins the origin runId)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "runId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiscoveryRetryAccepted"
+                }
+              }
+            },
+            "description": "{projectId, run} with the new run (discovery_routes.go:667-670)"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "the pinned run does not belong to this project"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "run not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "Idempotency-Key conflicts with another retry request"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FreeDiscoveryCapError"
+                }
+              }
+            },
+            "description": "free discovery cap reached"
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/cancel": {
+      "post": {
+        "operationId": "cancelDefineAnalysis",
+        "summary": "Cancel every non-terminal ingest run of the project (report, book and board survive)",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "description": "defaults to \"cancelled from project settings\" when blank (discovery_routes.go:1231-1235)",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelIngestResponse"
+                }
+              }
+            },
+            "description": "{projectId, status: \"cancelled\", cancelledRuns} (discovery_routes.go:1251-1255)"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "cancel failed"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": ["error", "message"]
+      },
+      "FreeDiscoveryCapError": {
+        "description": "the 429 body shared by start and retry (discovery_routes.go:26-39)",
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": ["free_discovery_cap_reached"]
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "window": {
+            "description": "e.g. \"30d\"",
+            "type": "string"
+          }
+        },
+        "required": ["error", "limit", "window"]
+      },
+      "RepositorySnapshot": {
+        "description": "one frozen repository row of the source manifest (types.go:212)",
+        "type": "object",
+        "properties": {
+          "identity": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "commitSha": {
+            "type": "string"
+          }
+        }
+      },
+      "SourceSnapshot": {
+        "description": "the frozen source manifest pinned at run start (types.go:250-264)",
+        "type": "object",
+        "properties": {
+          "assessmentRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "assessmentCatalogVersion": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "projectBriefRevision": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "knowledgeBaseRevision": {
+            "type": "string"
+          },
+          "knowledgeDocumentHashes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RepositorySnapshot"
+            }
+          },
+          "analyzerVersion": {
+            "type": "string"
+          },
+          "synthesisPromptVersion": {
+            "type": "string"
+          },
+          "outputSchemaVersion": {
+            "type": "string"
+          },
+          "sourceWarnings": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "documentId": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "contentType": {
+                  "type": "string"
+                },
+                "sizeBytes": {
+                  "type": "integer",
+                  "format": "int64"
+                }
+              }
+            }
+          }
+        },
+        "required": ["assessmentRevision", "assessmentCatalogVersion", "projectBriefRevision", "knowledgeBaseRevision", "repositories", "analyzerVersion", "synthesisPromptVersion", "outputSchemaVersion"]
+      },
+      "DiscoveryRun": {
+        "description": "ImplementationDiscoveryRun (go/internal/implementationdiscovery/types.go:603-664), the 202 body of start and the run object of reads. The report object is the succeeded run's ImplementationDiscoveryReport (types.go:350); its full shape is out of scope here — clients treat it as opaque evidence-carrying data",
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "succeeded", "failed", "cancelled", "stale"]
+          },
+          "lifecycleStateAtStart": {
+            "type": "string"
+          },
+          "sourceSnapshot": {
+            "$ref": "#/components/schemas/SourceSnapshot"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "failureCode": {
+            "type": "string"
+          },
+          "failureMessage": {
+            "description": "redacted safe message",
+            "type": "string"
+          },
+          "supersededBy": {
+            "type": "string"
+          },
+          "staleReason": {
+            "type": "string"
+          },
+          "retryCount": {
+            "type": "integer"
+          },
+          "claimCount": {
+            "description": "lease-fenced claims of this row, first included",
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "currentPhase": {
+            "description": "evidence-guards, evidence-index, synthesis, stamp-and-canonicalize, validation; empty when queued or terminal",
+            "type": "string"
+          },
+          "phaseEnteredAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "projectId", "organisationId", "status", "lifecycleStateAtStart", "sourceSnapshot", "idempotencyKey", "createdBy", "retryCount", "claimCount", "createdAt", "updatedAt"]
+      },
+      "DiscoveryRead": {
+        "description": "the 200 body of GET define-analysis (discovery_routes.go:594-596). Two top-level variants share this schema: pre-run {projectId, run: null, status: \"not_started\", preRunStepProgress?} and with-run {projectId, run, phaseEstimates?, stepProgress?, planConfirmed?, activeDocumentationId?}",
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "run": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DiscoveryRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["not_started"]
+          },
+          "preRunStepProgress": {
+            "description": "pre-run step projection, only when no run exists (discovery_routes.go:550-557)",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "phaseEstimates": {
+            "description": "PhaseEstimates decoration",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "stepProgress": {
+            "description": "StepProgress decoration",
+            "type": "object",
+            "additionalProperties": true
+          },
+          "planConfirmed": {
+            "type": "boolean"
+          },
+          "activeDocumentationId": {
+            "type": "string"
+          }
+        },
+        "required": ["projectId", "run"]
+      },
+      "ApproveRequest": {
+        "description": "ApproveRequest (go/internal/implementationdiscovery/contract_approve_advance.go:44-47); unknown fields are decode errors",
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string"
+          },
+          "expectedVersion": {
+            "type": "integer"
+          }
+        }
+      },
+      "ApproveAdvanceResponse": {
+        "description": "the approve response with the advance tail (contract_approve_advance.go:82-94)",
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "runId": {
+            "type": "string"
+          },
+          "status": {
+            "description": "always \"approved\"",
+            "type": "string"
+          },
+          "sourcesChanged": {
+            "description": "true when tolerated commit drift was recorded during the live source check (omitempty)",
+            "type": "boolean"
+          },
+          "advance": {
+            "description": "AdvanceResult (contract_approve_advance.go:96-): applied, event, macro, micro, version when the transition fired",
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "required": ["projectId", "runId", "status", "advance"]
+      },
+      "DiscoveryRetryAccepted": {
+        "description": "the 202 body of retry (discovery_routes.go:667-670)",
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "run": {
+            "$ref": "#/components/schemas/DiscoveryRun"
+          }
+        },
+        "required": ["projectId", "run"]
+      },
+      "CancelIngestResponse": {
+        "description": "the 200 body of cancel (discovery_routes.go:1251-1255)",
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["cancelled"]
+          },
+          "cancelledRuns": {
+            "type": "integer"
+          }
+        },
+        "required": ["projectId", "status", "cancelledRuns"]
+      }
+    }
+  }
+}

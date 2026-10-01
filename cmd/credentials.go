@@ -67,8 +67,8 @@ var cspFields = map[string][]credentialField{
 type credentialField struct {
 	Key    string
 	Label  string
-	Secret bool   // mask input
-	IsFile bool   // read file contents instead of raw value
+	Secret bool // mask input
+	IsFile bool // read file contents instead of raw value
 }
 
 // credentialBlock is the JSON payload sent to the backend.

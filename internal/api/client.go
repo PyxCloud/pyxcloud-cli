@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -84,6 +85,22 @@ func (c *Client) ensureToken() error {
 		return fmt.Errorf("auth refresh: no access_token in response")
 	}
 	c.Token = accessToken
+	return nil
+}
+
+// Authorize refreshes the access token if needed and sets the bearer header.
+// Its signature matches the generated clients' RequestEditorFn
+// (internal/api/gen/...), so they share this client's auth and refresh logic:
+//
+//	journey.NewClientWithResponses(c.BaseURL,
+//		journey.WithHTTPClient(c.HTTPClient),
+//		journey.WithRequestEditorFn(c.Authorize))
+func (c *Client) Authorize(_ context.Context, req *http.Request) error {
+	if err := c.ensureToken(); err != nil {
+		return fmt.Errorf(errAuthRefreshFmt, err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Accept", contentTypeJSON)
 	return nil
 }
 
