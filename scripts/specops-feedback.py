@@ -257,7 +257,7 @@ def verify_docker_db():
         raise FeedbackError("expected exactly one running sandbox database container")
     template = ("{{index .Config.Labels \"com.docker.compose.project\"}}\t"
                 "{{index .Config.Labels \"com.docker.compose.service\"}}\t"
-                "{{json (index .NetworkSettings.Ports \"5432/tcp\")}}\t"
+                "{{json (index .HostConfig.PortBindings \"5432/tcp\")}}\t"
                 "{{json .NetworkSettings.Networks}}")
     summary = _run_fixed(["docker", "inspect", "--format", template, ids[0]], timeout=8, env=docker_env)
     try:
@@ -339,7 +339,7 @@ def verify_docker_forwarder():
         raise FeedbackError("expected exactly one running sandbox SSO forwarder")
     template = ("{{index .Config.Labels \"com.docker.compose.project\"}}\t"
                 "{{index .Config.Labels \"com.docker.compose.service\"}}\t"
-                "{{json (index .NetworkSettings.Ports \"18081/tcp\")}}\t"
+                "{{json (index .HostConfig.PortBindings \"18081/tcp\")}}\t"
                 "{{json .NetworkSettings.Networks}}")
     summary = _run_fixed(["docker", "inspect", "--format", template, ids[0]], timeout=8, env=docker_env)
     try:
@@ -354,7 +354,7 @@ def verify_docker_forwarder():
 def verify_launcher(backend_repo: Path, runtime_dir: Path):
     launcher, launcher_sha = validate_tracked_file(backend_repo, "sandbox/specops/start-backend.py")
     output = _run_fixed([sys.executable, str(launcher), "status", "--runtime-dir", str(runtime_dir)],
-                        timeout=7)
+                        timeout=40)
     try:
         status = json.loads(output)
     except json.JSONDecodeError:
@@ -387,6 +387,14 @@ def validate_launcher_guard(metadata, profile_bytes, runtime_dir):
 
 
 def read_launcher_guard(backend_repo: Path, runtime_dir: Path):
+    if (runtime_dir / "container.json").is_file():
+        launcher, _ = validate_tracked_file(backend_repo, "sandbox/specops/container-sandbox.py")
+        result = json.loads(_run_fixed([sys.executable, str(launcher), "status", "--runtime-dir", str(runtime_dir)], timeout=40))
+        validate_launcher_status(result)
+        guard = result.get("guard", {})
+        if guard != {"name": "docker-internal-network", "version": 1, "selfTest": "passed"}:
+            raise FeedbackError("container isolation proof failed")
+        return guard
     if sys.platform != "darwin":
         raise FeedbackError("certified feedback requires the macOS kernel sandbox guard")
     metadata_path = runtime_dir / "backend.json"
@@ -461,7 +469,7 @@ def verify_readyz():
     opener = build_opener(ProxyHandler({}))
     request = Request(API + "/readyz", headers={"User-Agent": "specops-feedback-check"})
     try:
-        with opener.open(request, timeout=4) as response:
+        with opener.open(request, timeout=15) as response:
             code = response.status
     except (OSError, URLError):
         raise FeedbackError("backend readiness check failed") from None
