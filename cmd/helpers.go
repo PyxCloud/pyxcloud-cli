@@ -10,7 +10,10 @@ import (
 
 // getClient builds an API client from config + flags.
 func getClient() (*api.Client, error) {
-	cfg, err := config.Load()
+	if !config.ValidProfile(profile) {
+		return nil, fmt.Errorf("unknown profile %q (supported: sandbox, staging)", profile)
+	}
+	cfg, err := config.LoadProfile(profile)
 	if err != nil {
 		return nil, fmt.Errorf("load config: %w", err)
 	}
