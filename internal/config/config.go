@@ -10,10 +10,10 @@ import (
 // Config holds CLI persistent settings.
 type Config struct {
 	Token        string `json:"token"`                   // access_token (short-lived JWT)
-	RefreshToken string `json:"refresh_token,omitempty"`  // offline refresh_token (long-lived)
+	RefreshToken string `json:"refresh_token,omitempty"` // offline refresh_token (long-lived)
 	APIURL       string `json:"api_url"`
-	AuthURL      string `json:"auth_url,omitempty"`       // Keycloak realm URL for token refresh
-	ClientID     string `json:"client_id,omitempty"`      // OAuth2 client ID
+	AuthURL      string `json:"auth_url,omitempty"`  // Keycloak realm URL for token refresh
+	ClientID     string `json:"client_id,omitempty"` // OAuth2 client ID
 }
 
 const configDir = ".pyxcloud"
@@ -32,11 +32,15 @@ func init() {
 
 // Load reads the config file.
 func Load() (*Config, error) {
-	if configPath == "" {
+	return loadPath(configPath)
+}
+
+func loadPath(path string) (*Config, error) {
+	if path == "" {
 		return nil, fmt.Errorf("cannot determine config path")
 	}
 
-	data, err := os.ReadFile(configPath)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return &Config{}, nil
@@ -53,18 +57,21 @@ func Load() (*Config, error) {
 
 // Save writes the config file.
 func Save(cfg *Config) error {
-	if configPath == "" {
+	return savePath(configPath, cfg)
+}
+
+func savePath(path string, cfg *Config) error {
+	if path == "" {
 		return fmt.Errorf("cannot determine config path")
 	}
 
-	if err := os.MkdirAll(filepath.Dir(configPath), 0700); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
-
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(configPath, data, 0600)
+	return os.WriteFile(path, data, 0600)
 }
