@@ -257,8 +257,9 @@ class Harness:
     def discover(self):
         _, data = self.cli("discover", "read", "--wait", str(POLL_WAIT_SECONDS), timeout=35)
         status = terminal_status(data)
-        if not status:
+        if not status or status in {"failed", "stale", "cancelled", "error"}:
             self.cli("discover", "start")
+            status = "queued"
             self.outcomes["discoveryStarted"] = True
         else:
             self.outcomes["discoveryStarted"] = False
