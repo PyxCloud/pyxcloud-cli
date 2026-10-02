@@ -112,7 +112,7 @@ def sha256_file(path: Path):
 
 def validate_fixture_paths(backend_repo: Path, acceptance_fixture: Path):
     sandbox = backend_repo / "sandbox"
-    realm = sandbox / "realm-export.json"
+    realm = sandbox / "specops/realm.fixture.json"
     source = sandbox / "specops/fixture/files/tinyGoApp.go"
     manifest = source.parents[1] / "manifest.json"
     required = (realm, source, manifest, acceptance_fixture)
@@ -192,7 +192,7 @@ def validate_tracked_file(repository: Path, relative: str):
 
 
 def validate_safe_realm_fixture(backend_repo: Path, runtime_dir: Path):
-    source = backend_repo / "sandbox/realm-export.json"
+    source = backend_repo / "sandbox/specops/realm.fixture.json"
     safe_export = runtime_dir / "realm-export.safe.json"
     try:
         source_info = source.lstat()

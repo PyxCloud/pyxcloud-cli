@@ -152,10 +152,10 @@ class PreflightTests(unittest.TestCase):
             root = Path(td)
             backend = root / "backend"
             runtime = root / "runtime"
-            (backend / "sandbox").mkdir(parents=True)
+            (backend / "sandbox/specops").mkdir(parents=True)
             runtime.mkdir(mode=0o700)
             source = {"realm": "passobuild", "users": [{"username": "a@example.test"}]}
-            (backend / "sandbox/realm-export.json").write_text(json.dumps(source))
+            (backend / "sandbox/specops/realm.fixture.json").write_text(json.dumps(source))
             user = source["users"][0]
             user["id"] = str(uuid.uuid5(feedback.SAFE_REALM_USER_NAMESPACE, "passobuild/a@example.test"))
             safe_file = runtime / "realm-export.safe.json"
@@ -311,7 +311,7 @@ class PreflightTests(unittest.TestCase):
             manifest = fixture.parents[1] / "manifest.json"
             manifest.write_text(json.dumps({"identity": feedback.FIXTURE_REPO,
                                             "commitSHA": feedback.FIXTURE_COMMIT}))
-            realm = root / "sandbox/realm-export.json"
+            realm = root / "sandbox/specops/realm.fixture.json"
             realm.write_text("{}")
             acceptance = root / "acceptance.md"
             acceptance.write_text("FR-01 /healthz INV-01")
@@ -372,7 +372,7 @@ class ChildProcessTests(unittest.TestCase):
             runtime.chmod(0o700)
             backend = runtime / "backend"
             source = backend / "sandbox/specops/fixture/files/tinyGoApp.go"
-            realm = backend / "sandbox/realm-export.json"
+            realm = backend / "sandbox/specops/realm.fixture.json"
             acceptance = Path(__file__).resolve().parents[1] / "fixtures/specops-acceptance.md"
             for path in (source, realm):
                 path.parent.mkdir(parents=True, exist_ok=True)
