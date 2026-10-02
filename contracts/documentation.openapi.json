@@ -1,0 +1,213 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "PyxCloud Documentation Canonical API",
+    "version": "1.0.0",
+    "description": "Canonical documentation workspace, revision decision, publication, and snapshot routes. This contract covers only the mounted subset used by the CLI."
+  },
+  "servers": [
+    { "url": "/" }
+  ],
+  "paths": {
+    "/documentation/v1/projects/{projectId}/documentation/workspace": {
+      "get": {
+        "operationId": "documentationWorkspaceRead",
+        "summary": "Read the canonical documentation workspace",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" }
+        ],
+        "responses": {
+          "200": { "description": "Workspace snapshot", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "503": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/documentation/v1/projects/{projectId}/documentation/revisions": {
+      "get": {
+        "operationId": "documentationRevisionsList",
+        "summary": "List documentation revisions",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 200 } },
+          { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 0 } }
+        ],
+        "responses": {
+          "200": { "description": "Revision page", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "503": { "$ref": "#/components/responses/Problem" }
+        }
+      },
+      "post": {
+        "operationId": "documentationRevisionPublish",
+        "summary": "Publish a named completed documentation generation as a draft revision",
+        "description": "Requires the exact producing run and documentation generation identifier. If-Match is optional because this command may create the workspace.",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatchOptional" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["runId", "documentationId"],
+                "properties": {
+                  "runId": { "type": "string", "minLength": 1, "pattern": "\\S" },
+                  "documentationId": { "type": "string", "minLength": 1, "pattern": "\\S" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Generation published as a new draft revision", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "200": { "description": "Idempotent replay of a publication", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "503": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/documentation/v1/projects/{projectId}/documentation/revisions/{revisionId}/begin-review": {
+      "post": {
+        "operationId": "documentationRevisionBeginReview",
+        "summary": "Begin review of a draft revision",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "$ref": "#/components/parameters/RevisionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatchRequired" }
+        ],
+        "responses": {
+          "200": { "description": "Revision decision result", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "503": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/documentation/v1/projects/{projectId}/documentation/revisions/{revisionId}/accept": {
+      "post": {
+        "operationId": "documentationRevisionAccept",
+        "summary": "Accept a revision in review",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "$ref": "#/components/parameters/RevisionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatchRequired" }
+        ],
+        "responses": {
+          "200": { "description": "Revision decision result", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "503": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/documentation/v1/projects/{projectId}/documentation/revisions/{revisionId}/reject": {
+      "post": {
+        "operationId": "documentationRevisionReject",
+        "summary": "Reject an unresolved candidate revision",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "$ref": "#/components/parameters/RevisionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatchRequired" }
+        ],
+        "responses": {
+          "200": { "description": "Revision decision result", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "503": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/documentation/v1/projects/{projectId}/documentation/snapshots/{projectVersionId}": {
+      "get": {
+        "operationId": "documentationSnapshotRead",
+        "summary": "Read the documentation snapshot for a project version",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "$ref": "#/components/parameters/ProjectVersionId" }
+        ],
+        "responses": {
+          "200": { "description": "Snapshot state", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "503": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    },
+    "/documentation/v1/projects/{projectId}/documentation/snapshots/{projectVersionId}/lock": {
+      "post": {
+        "operationId": "documentationSnapshotLock",
+        "summary": "Lock the accepted current revision to a project version",
+        "parameters": [
+          { "$ref": "#/components/parameters/ProjectId" },
+          { "$ref": "#/components/parameters/ProjectVersionId" },
+          { "$ref": "#/components/parameters/IdempotencyKey" },
+          { "$ref": "#/components/parameters/IfMatchRequired" }
+        ],
+        "responses": {
+          "200": { "description": "Snapshot lock result", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "400": { "$ref": "#/components/responses/Problem" },
+          "401": { "$ref": "#/components/responses/Problem" },
+          "403": { "$ref": "#/components/responses/Problem" },
+          "404": { "$ref": "#/components/responses/Problem" },
+          "409": { "$ref": "#/components/responses/Problem" },
+          "503": { "$ref": "#/components/responses/Problem" }
+        }
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "ProjectId": { "name": "projectId", "in": "path", "required": true, "schema": { "type": "integer", "format": "int64", "minimum": 1 } },
+      "RevisionId": { "name": "revisionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "ProjectVersionId": { "name": "projectVersionId", "in": "path", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1 } },
+      "IfMatchRequired": { "name": "If-Match", "in": "header", "required": true, "description": "Raw decimal optimistic version; do not include HTTP entity-tag quotes.", "schema": { "type": "string", "pattern": "^-?[0-9]+$" } },
+      "IfMatchOptional": { "name": "If-Match", "in": "header", "required": false, "description": "Optional raw decimal optimistic version; do not include HTTP entity-tag quotes.", "schema": { "type": "string", "pattern": "^-?[0-9]+$" } }
+    },
+    "responses": {
+      "Problem": {
+        "description": "RFC 7807-style API problem",
+        "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Problem" } } }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": ["type", "title", "status", "code"],
+        "properties": {
+          "type": { "type": "string" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "code": { "type": "string" },
+          "detail": { "type": "string" },
+          "instance": { "type": "string" }
+        }
+      }
+    }
+  }
+}

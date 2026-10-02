@@ -1,0 +1,183 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Deploy seal contract",
+    "version": "1.0.0",
+    "description": "GET preconditions is mounted. POST authorize documents deploysealcontract.PathAuthorize and DTO preconditions, with explicit x-runtime-status: unmounted."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/vibe/projects/{projectId}/releases/{releaseId}/deploy/preconditions": {
+      "get": {
+        "operationId": "deployPreconditionsRead",
+        "summary": "Read deploy preconditions",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "description": "Envelope data is deploysealcontract.Preconditions; unavailable sources are represented as named blockers, not satisfied checklist items.",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "releaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "environment",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "staging",
+                "production"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/projects/{projectId}/releases/{releaseId}/deploy": {
+      "post": {
+        "operationId": "deployAuthorize",
+        "summary": "Authorize release deployment",
+        "responses": {
+          "202": {
+            "description": "Observed handler response"
+          }
+        },
+        "description": "DTO contract from deploysealcontract.AuthorizeRequest. Runtime route is not mounted. Step-up token is transported via X-StepUp-Token when mounted.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "environmentKind": {
+                    "type": "string",
+                    "enum": [
+                      "staging",
+                      "production"
+                    ]
+                  },
+                  "idempotencyKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "environmentKind",
+                  "idempotencyKey"
+                ]
+              }
+            }
+          }
+        },
+        "x-runtime-status": "unmounted",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "releaseId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-StepUp-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Required verified step-up token transport when the authorization handler is mounted."
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Preconditions": {
+        "type": "object",
+        "properties": {
+          "releaseId": {
+            "type": "string"
+          },
+          "environmentKind": {
+            "type": "string"
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string"
+                },
+                "met": {
+                  "type": "boolean"
+                },
+                "fixAt": {
+                  "type": "string"
+                },
+                "refusal": {
+                  "type": "string"
+                },
+                "keys": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "key",
+                "met",
+                "fixAt"
+              ]
+            }
+          }
+        },
+        "required": [
+          "releaseId",
+          "environmentKind",
+          "ready",
+          "evaluatedAt",
+          "items"
+        ]
+      }
+    }
+  }
+}

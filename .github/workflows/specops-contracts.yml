@@ -1,0 +1,20 @@
+name: SpecOps contracts
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - run: go run ./cmd/contractgen -check
+      - run: python3 scripts/check-contracts.py
+      - run: go test ./...

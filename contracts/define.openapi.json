@@ -1,0 +1,556 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Define and scope CLI contract",
+    "version": "1.0.0",
+    "description": "Mounted define-analysis, documentation generation/read, scope assessment, forecast, and compiled-documentation derivation routes. Unknown handler DTOs are represented as dynamic JSON objects."
+  },
+  "servers": [
+    {
+      "url": "/"
+    }
+  ],
+  "paths": {
+    "/vibe/projects/{projectId}/define-analysis": {
+      "post": {
+        "operationId": "defineAnalysisStart",
+        "summary": "Start implementation discovery",
+        "responses": {
+          "202": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "get": {
+        "operationId": "defineAnalysisRead",
+        "summary": "Read implementation discovery",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "wait",
+            "in": "query",
+            "required": false,
+            "description": "Long-poll wait in seconds; absent or malformed values act as 0, and values are clamped to [0, 20].",
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 20
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/gate": {
+      "get": {
+        "operationId": "defineAnalysisGate",
+        "summary": "Gate implementation discovery",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/retry": {
+      "post": {
+        "operationId": "defineAnalysisRetry",
+        "summary": "Retry implementation discovery",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "runId": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/cancel": {
+      "post": {
+        "operationId": "defineAnalysisCancel",
+        "summary": "Cancel implementation discovery",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/approve": {
+      "post": {
+        "operationId": "defineAnalysisApprove",
+        "summary": "Approve implementation discovery",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "advance",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "runId": {
+                    "type": "string"
+                  },
+                  "expectedVersion": {
+                    "type": "integer"
+                  },
+                  "deferred": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": [
+                  "runId",
+                  "expectedVersion"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/skip": {
+      "post": {
+        "operationId": "defineAnalysisSkip",
+        "summary": "Skip implementation discovery",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/confirm": {
+      "post": {
+        "operationId": "defineAnalysisConfirm",
+        "summary": "Confirm implementation discovery",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/opinions": {
+      "put": {
+        "operationId": "defineAnalysisSaveOpinions",
+        "summary": "Save discovery opinions",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "answers": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {},
+                      "additionalProperties": true
+                    }
+                  }
+                },
+                "required": [
+                  "answers"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/projects/{projectId}/define-analysis/decisions": {
+      "put": {
+        "operationId": "defineAnalysisSaveDecisions",
+        "summary": "Save capability decisions",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "runId": {
+                    "type": "string"
+                  },
+                  "expectedVersion": {
+                    "type": "integer"
+                  },
+                  "decisions": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "capabilityId": {
+                          "type": "string"
+                        },
+                        "decision": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "runId",
+                  "expectedVersion",
+                  "decisions"
+                ]
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/projects/{projectId}/documentation/generate": {
+      "post": {
+        "operationId": "documentationGenerate",
+        "summary": "Generate project documentation",
+        "responses": {
+          "202": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "runId": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/projects/{projectId}/documentation": {
+      "get": {
+        "operationId": "documentationRead",
+        "summary": "Read generated project documentation",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/projects/{projectId}/scope-assessment": {
+      "get": {
+        "operationId": "scopeAssessmentRead",
+        "summary": "Read scope assessment",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "operationId": "scopeAssessmentStart",
+        "summary": "Start scope assessment",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Request fields are not enumerated by the mounted handler contract.",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/vibe/scope/forecast": {
+      "post": {
+        "operationId": "scopeForecast",
+        "summary": "Forecast scope",
+        "responses": {
+          "200": {
+            "description": "Observed handler response"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "description": "Request fields are not enumerated by the mounted handler contract.",
+                "properties": {},
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vibe/projects/{projectId}/scope/derivation": {
+      "post": {
+        "operationId": "scopeDerivation",
+        "summary": "Derive scope from compiled documentation",
+        "description": "Derives a scope contract from existing compiled documentation. The route accepts no request body and does not apply a project-state transition.",
+        "responses": {
+          "200": {
+            "description": "Derived scope contract and compilation revision"
+          },
+          "409": {
+            "description": "no_compiled_documentation"
+          }
+        },
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {}
+  }
+}
