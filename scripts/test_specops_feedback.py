@@ -242,6 +242,15 @@ class PreflightTests(unittest.TestCase):
                         "nextActionKey": "connect", "evidence": str(m0_path)}
             self.assertTrue(feedback.validate_child_evidence(
                 envelope, phase="m0", evidence_root=root, project_id="101")["publicStateVerified"])
+            # The real smoke exporter strips the scheme to avoid sensitive URLs.
+            m0_record["backend"] = "127.0.0.1:16080"
+            m0_path.write_text(json.dumps(m0_record))
+            self.assertTrue(feedback.validate_child_evidence(envelope, phase="m0", evidence_root=root, project_id="101"))
+            m0_record["backend"] = "remote.example:16080"
+            m0_path.write_text(json.dumps(m0_record))
+            with self.assertRaises(feedback.FeedbackError):
+                feedback.validate_child_evidence(envelope, phase="m0", evidence_root=root, project_id="101")
+            m0_record["backend"] = feedback.API
             m0_record["secondReadNoMutation"] = False
             m0_path.write_text(json.dumps(m0_record))
             with self.assertRaises(feedback.FeedbackError):

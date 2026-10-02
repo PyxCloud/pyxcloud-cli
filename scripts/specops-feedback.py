@@ -721,7 +721,7 @@ def validate_child_evidence(envelope, *, phase, evidence_root, project_id, run_i
     record = _private_json_file(evidence_path, evidence_root)
     if phase == "m0":
         if (record.get("providerMode") != "local" or record.get("authMode") != "browser-pkce"
-                or record.get("backend") != API or str(record.get("projectId")) != project_id
+                or record.get("backend") not in {API, "127.0.0.1:16080"} or str(record.get("projectId")) != project_id
                 or record.get("projectName") != "specops-local-feedback"
                 or record.get("readCount") != 2 or record.get("secondReadNoMutation") is not True
                 or record.get("first") != record.get("second")
