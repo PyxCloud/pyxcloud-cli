@@ -333,6 +333,65 @@ class PreflightTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(feedback.FeedbackError):
                 feedback.validate_launcher_status(bad)
 
+    def test_private_go_dev_image_selects_live_dev_sandbox_status_not_metadata(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            backend = root / "backend"
+            runtime = root / "runtime"
+            backend.mkdir()
+            runtime.mkdir(mode=0o700)
+            image_metadata = runtime / "go-dev-image.json"
+            image_metadata.write_text("{}"); image_metadata.chmod(0o600)
+            # Legacy markers may coexist; the private Go image identity selects the
+            # dev guard, whose tracked status command must still prove Docker + API.
+            (runtime / "container.json").write_text('{"status":"running"}')
+            launcher = backend / "sandbox/specops/dev-sandbox.py"
+            good = {"schemaVersion": 1, "status": "running", "mode": "dev", "port": 16080,
+                    "runtimeDir": str(runtime), "endpoint": feedback.API + "/readyz",
+                    "guard": {"name": "docker-internal-network", "version": 1, "selfTest": "passed"}}
+            with mock.patch.object(feedback, "validate_tracked_file", return_value=(launcher, "a" * 64)) as tracked, \
+                    mock.patch.object(feedback, "_run_fixed", return_value=json.dumps(good)) as run:
+                guard = feedback.read_launcher_guard(backend, runtime)
+            self.assertEqual(guard, good["guard"])
+            tracked.assert_called_once_with(backend, "sandbox/specops/dev-sandbox.py")
+            argv = run.call_args.args[0]
+            env = run.call_args.kwargs["env"]
+            self.assertEqual(argv, [feedback.sys.executable, str(launcher), "status"])
+            self.assertEqual(env["PYX_SPECOPS_REPO_ROOT"], str(backend.resolve()))
+            self.assertEqual(env["PYX_SPECOPS_RUNTIME_DIR"], str(runtime.resolve()))
+            self.assertNotIn("OPENROUTER_API_KEY", env)
+
+    def test_dev_guard_rejects_unprivate_metadata_untracked_source_and_fake_status(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            backend = root / "backend"
+            runtime = root / "runtime"
+            backend.mkdir()
+            runtime.mkdir(mode=0o700)
+            metadata = runtime / "go-dev-image.json"
+            metadata.write_text("{}"); metadata.chmod(0o644)
+            with mock.patch.object(feedback, "validate_tracked_file") as tracked, \
+                    mock.patch.object(feedback, "_run_fixed") as run, \
+                    self.assertRaises(feedback.FeedbackError):
+                feedback.read_launcher_guard(backend, runtime)
+            tracked.assert_not_called(); run.assert_not_called()
+
+            metadata.chmod(0o600)
+            with mock.patch.object(feedback, "validate_tracked_file", side_effect=feedback.FeedbackError("untracked")), \
+                    mock.patch.object(feedback, "_run_fixed") as run, \
+                    self.assertRaises(feedback.FeedbackError):
+                feedback.read_launcher_guard(backend, runtime)
+            run.assert_not_called()
+
+            good = {"schemaVersion": 1, "status": "running", "mode": "dev", "port": 16080,
+                    "runtimeDir": str(runtime), "endpoint": feedback.API + "/readyz",
+                    "guard": {"name": "docker-internal-network", "version": 1, "selfTest": "passed"}}
+            for forged in ({**good, "mode": "metadata-only"},
+                           {**good, "runtimeDir": str(root / "other")},
+                           {**good, "guard": {"name": "docker-internal-network", "version": 1, "selfTest": "skipped"}}):
+                with self.subTest(forged=forged), self.assertRaises(feedback.FeedbackError):
+                    feedback.validate_dev_launcher_status(forged, runtime)
+
     def test_docker_queries_are_read_only_and_require_one_owned_container(self):
         with mock.patch.object(feedback, "_run_fixed", side_effect=[
                 "desktop-linux", "unix:///var/run/docker.sock", "abc123",

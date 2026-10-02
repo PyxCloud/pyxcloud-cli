@@ -355,6 +355,10 @@ _container_guard_cache = {}
 
 def verify_launcher(backend_repo: Path, runtime_dir: Path):
     launcher, launcher_sha = validate_tracked_file(backend_repo, "sandbox/specops/start-backend.py")
+    if has_private_dev_image_metadata(runtime_dir):
+        status, _, _ = verify_dev_sandbox_status(backend_repo, runtime_dir)
+        return {"status": status["status"], "port": status["port"], "guard": status["guard"],
+                "launcher": launcher, "launcherSha256": launcher_sha}
     output = _run_fixed([sys.executable, str(launcher), "status", "--runtime-dir", str(runtime_dir)],
                         timeout=40)
     try:
@@ -377,6 +381,45 @@ def validate_launcher_status(status):
     return True
 
 
+def has_private_dev_image_metadata(runtime_dir: Path):
+    validate_runtime_for_evidence(Path(runtime_dir))
+    path = Path(runtime_dir) / "go-dev-image.json"
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return False
+    except OSError:
+        raise FeedbackError("development image metadata is unavailable") from None
+    if (not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)
+            or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600):
+        raise FeedbackError("development image metadata is not a private owned file")
+    return True
+
+
+def validate_dev_launcher_status(status, runtime_dir):
+    validate_launcher_status(status)
+    expected_guard = {"name": "docker-internal-network", "version": 1, "selfTest": "passed"}
+    if (status.get("mode") != "dev"
+            or Path(str(status.get("runtimeDir", ""))).resolve() != Path(runtime_dir).resolve()
+            or status.get("guard") != expected_guard):
+        raise FeedbackError("owned dev backend Docker guard or runtime identity is invalid")
+    return expected_guard
+
+
+def verify_dev_sandbox_status(backend_repo: Path, runtime_dir: Path):
+    launcher, launcher_sha = validate_tracked_file(backend_repo, "sandbox/specops/dev-sandbox.py")
+    env = _safe_env(docker=True)
+    env["PYX_SPECOPS_REPO_ROOT"] = str(Path(backend_repo).resolve(strict=True))
+    env["PYX_SPECOPS_RUNTIME_DIR"] = str(Path(runtime_dir).resolve(strict=True))
+    output = _run_fixed([sys.executable, str(launcher), "status"], timeout=90, env=env)
+    try:
+        status = json.loads(output)
+    except json.JSONDecodeError:
+        raise FeedbackError("owned dev backend status metadata is invalid") from None
+    validate_dev_launcher_status(status, runtime_dir)
+    return status, launcher, launcher_sha
+
+
 def validate_launcher_guard(metadata, profile_bytes, runtime_dir):
     guard = metadata.get("guard") if isinstance(metadata, dict) else None
     expected_hash = hashlib.sha256(profile_bytes).hexdigest()
@@ -391,6 +434,9 @@ def validate_launcher_guard(metadata, profile_bytes, runtime_dir):
 
 
 def read_launcher_guard(backend_repo: Path, runtime_dir: Path):
+    if has_private_dev_image_metadata(runtime_dir):
+        status, _, _ = verify_dev_sandbox_status(backend_repo, runtime_dir)
+        return dict(status["guard"])
     if (runtime_dir / "container.json").is_file():
         launcher, _ = validate_tracked_file(backend_repo, "sandbox/specops/container-sandbox.py")
         cached = _container_guard_cache.get(str(runtime_dir.resolve()))
