@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -49,7 +50,7 @@ func TestDoRequestPOSTSendsJson(t *testing.T) {
 
 	c := NewClient(srv.URL, "pyxc_test")
 	body := map[string]string{"name": "test-token"}
-	_, _, err := c.DoRequest("POST", "/cli/token", body)
+	_, _, err := c.DoRequest("POST", "/vibe/projects", body)
 	if err != nil {
 		t.Fatalf("DoRequest POST failed: %v", err)
 	}
@@ -140,46 +141,15 @@ func TestCompareOmitsTableIdWhenEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Compare with empty tableId failed: %v", err)
 	}
-	if capturedPath != "/cli/compare/3/0.1.0" {
-		t.Errorf("Expected no tableId in URL, got path: %q", capturedPath)
+	if capturedPath != "/vibe/projects/3/versions/0.1.0/cloud/compare" {
+		t.Errorf("Expected governed compare path, got: %q", capturedPath)
 	}
 }
 
-func TestDeployInlineSendsCredentials(t *testing.T) {
-	var capturedPath string
-	var capturedBody map[string]interface{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.Path
-		json.NewDecoder(r.Body).Decode(&capturedBody)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status":            "UNDER_DEPLOYMENT",
-			"message":           "Inline deploy triggered successfully",
-			"ephemeralTargetId": 99,
-		})
-	}))
-	defer srv.Close()
-
-	c := NewClient(srv.URL, "pyxc_test")
-	creds := map[string]interface{}{
-		"target": map[string]interface{}{
-			"csp":     "aws",
-			"account": `{"access_key_id":"AKIA","secret_access_key":"secret"}`,
-		},
-	}
-	result, err := c.DeployInline("3", "0.1.0", creds)
-	if err != nil {
-		t.Fatalf("DeployInline failed: %v", err)
-	}
-	if capturedPath != "/cli/deploy/3/0.1.0/inline" {
-		t.Errorf("Path: got %q, want %q", capturedPath, "/cli/deploy/3/0.1.0/inline")
-	}
-	if result["status"] != "UNDER_DEPLOYMENT" {
-		t.Errorf("Status: got %q", result["status"])
-	}
-	target := capturedBody["target"].(map[string]interface{})
-	if target["csp"] != "aws" {
-		t.Errorf("Body target.csp: got %q", target["csp"])
+func TestDeployInlineNotAvailable(t *testing.T) {
+	_, err := NewClient("http://127.0.0.1:1", "pyxc_test").DeployInline("3", "0.1.0", nil)
+	if err == nil || !strings.Contains(err.Error(), "not available on the governed API yet") {
+		t.Errorf("Expected honest not-available error, got: %v", err)
 	}
 }
 
@@ -425,12 +395,12 @@ func TestSettingsRemoveRoleSendsPayload(t *testing.T) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
-// CLI Tokens
+// Governed credentials
 // ═══════════════════════════════════════════════════════════════════════
 
-func TestTokenListReturnsTokens(t *testing.T) {
+func TestTokenListReturnsCredentials(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/cli/token" {
+		if r.URL.Path != "/vibe/rbac/credentials" {
 			t.Errorf("Unexpected path: %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -447,57 +417,21 @@ func TestTokenListReturnsTokens(t *testing.T) {
 		t.Fatalf("TokenList failed: %v", err)
 	}
 	if len(tokens) != 2 {
-		t.Errorf("Expected 2 tokens, got %d", len(tokens))
+		t.Errorf("Expected 2 credentials, got %d", len(tokens))
 	}
 }
 
-func TestTokenCreateSendsNameAndReturnsToken(t *testing.T) {
-	var capturedBody map[string]string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "POST" || r.URL.Path != "/cli/token" {
-			t.Errorf("Unexpected %s %s", r.Method, r.URL.Path)
-		}
-		json.NewDecoder(r.Body).Decode(&capturedBody)
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"id": 3, "name": "new-token", "token": "pyxc_secret_value",
-		})
-	}))
-	defer srv.Close()
-
-	c := NewClient(srv.URL, "pyxc_test")
-	body := map[string]string{"name": "new-token"}
-	result, err := c.TokenCreate(body)
-	if err != nil {
-		t.Fatalf("TokenCreate failed: %v", err)
-	}
-	if capturedBody["name"] != "new-token" {
-		t.Errorf("Body name: got %q", capturedBody["name"])
-	}
-	if result["token"] != "pyxc_secret_value" {
-		t.Errorf("Token: got %q", result["token"])
+func TestTokenCreateNotAvailable(t *testing.T) {
+	_, err := NewClient("http://127.0.0.1:1", "pyxc_test").TokenCreate(map[string]string{"name": "x"})
+	if err == nil || !strings.Contains(err.Error(), "not available on the governed API yet") {
+		t.Errorf("Expected honest not-available error, got: %v", err)
 	}
 }
 
-func TestTokenRevokeSendsDelete(t *testing.T) {
-	var capturedPath, capturedMethod string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedPath = r.URL.Path
-		capturedMethod = r.Method
-		w.WriteHeader(http.StatusNoContent)
-	}))
-	defer srv.Close()
-
-	c := NewClient(srv.URL, "pyxc_test")
-	err := c.TokenRevoke("7")
-	if err != nil {
-		t.Fatalf("TokenRevoke failed: %v", err)
-	}
-	if capturedMethod != "DELETE" {
-		t.Errorf("Method: got %q, want DELETE", capturedMethod)
-	}
-	if capturedPath != "/cli/token/7" {
-		t.Errorf("Path: got %q, want /cli/token/7", capturedPath)
+func TestTokenRevokeNotAvailable(t *testing.T) {
+	err := NewClient("http://127.0.0.1:1", "pyxc_test").TokenRevoke("7")
+	if err == nil || !strings.Contains(err.Error(), "not available on the governed API yet") {
+		t.Errorf("Expected honest not-available error, got: %v", err)
 	}
 }
 

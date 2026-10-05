@@ -12,6 +12,14 @@ import (
 	"github.com/pyxcloud/pyxcloud-cli/internal/config"
 )
 
+// notAvailable marks operations whose legacy /cli/* endpoint has no governed
+// /vibe equivalent yet (mapping per ops/deliverables/recon/r1-cli-client-vs-allowlist.md).
+// The cobra commands stay in place; they fail with this honest error instead of
+// silently hitting a removed legacy route.
+func notAvailable(op string) error {
+	return fmt.Errorf("%s is not available on the governed API yet (no /vibe equivalent)", op)
+}
+
 const (
 	contentTypeJSON   = "application/json"
 	errAuthRefreshFmt = "auth refresh: %w"
@@ -53,17 +61,27 @@ func NewClientFromConfig(cfg *config.Config) *Client {
 	}
 }
 
-// ensureToken exchanges the stored PAT for a short-lived access JWT
-// via the backend's /cli/refresh endpoint. Called before every API request.
+// ensureToken keeps the saved access token usable. The governed /vibe API has
+// no PAT-exchange endpoint (the legacy POST /cli/refresh is not in the
+// allowlist): tokens come from the OAuth2.1+PKCE browser login
+// (cmd/auth.go loginWithBrowser). When only an offline refresh_token is
+// stored, the token is renewed directly against Keycloak with the standard
+// refresh_token grant — no new backend endpoint is involved.
 func (c *Client) ensureToken() error {
-	if c.RefreshToken == "" {
-		return nil // direct JWT mode — use token as-is
+	if c.Token != "" {
+		return nil // token as-is
+	}
+	if c.RefreshToken == "" || c.AuthURL == "" {
+		return fmt.Errorf("no saved token: run `pyx auth login` first")
 	}
 
-	refreshURL := c.BaseURL + "/cli/refresh"
-	payload, _ := json.Marshal(map[string]string{"pat": c.RefreshToken})
+	tokenEndpoint := c.AuthURL + "/protocol/openid-connect/token"
+	data := url.Values{}
+	data.Set("grant_type", "refresh_token")
+	data.Set("client_id", c.ClientID)
+	data.Set("refresh_token", c.RefreshToken)
 
-	resp, err := c.HTTPClient.Post(refreshURL, contentTypeJSON, bytes.NewReader(payload))
+	resp, err := c.HTTPClient.PostForm(tokenEndpoint, data)
 	if err != nil {
 		return fmt.Errorf(errAuthRefreshFmt, err)
 	}
@@ -126,22 +144,33 @@ func (c *Client) DoRequest(method, path string, body interface{}) ([]byte, int, 
 	return data, resp.StatusCode, nil
 }
 
-// Auth validates the token.
+// Auth validates the token. The legacy POST /cli/auth probe has no governed
+// equivalent; the closest allowed governed read is GET /vibe/rbac/credentials
+// (it succeeds only with a valid JWT). The governed endpoint returns a
+// credentials list; Auth surfaces the caller's own first entry as the
+// validation result.
 func (c *Client) Auth() (map[string]interface{}, error) {
-	data, status, err := c.DoRequest("POST", "/cli/auth", nil)
+	data, status, err := c.DoRequest("GET", "/vibe/rbac/credentials", nil)
 	if err != nil {
 		return nil, err
 	}
 	if status != 200 {
 		return nil, fmt.Errorf("authentication failed (HTTP %d): %s", status, string(data))
 	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	var list []map[string]interface{}
+	if err := json.Unmarshal(data, &list); err != nil {
+		var single map[string]interface{}
+		return single, json.Unmarshal(data, &single)
+	}
+	if len(list) == 0 {
+		return map[string]interface{}{}, nil
+	}
+	return list[0], nil
 }
 
 // Projects lists all projects.
 func (c *Client) Projects() ([]map[string]interface{}, error) {
-	data, status, err := c.DoRequest("GET", "/cli/projects", nil)
+	data, status, err := c.DoRequest("GET", "/vibe/projects", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -152,25 +181,21 @@ func (c *Client) Projects() ([]map[string]interface{}, error) {
 	return result, json.Unmarshal(data, &result)
 }
 
-// Builds lists builds for a project.
+// Builds has no governed equivalent: the /vibe flow is state-machine-centric
+// (project journey / releases), not build-centric.
 func (c *Client) Builds(projectID string) ([]map[string]interface{}, error) {
-	data, status, err := c.DoRequest("GET", "/cli/builds/"+projectID, nil)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf(errFailedHTTPFmt, status, string(data))
-	}
-	var result []map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	_ = projectID
+	return nil, notAvailable("builds")
 }
 
-// Compare gets comparison table data.
+// Compare gets the governed region-compare workspace for a project version
+// (CLD-01/CLD-02, allowlist.js: GET .../versions/:versionId/cloud/compare).
+// The legacy caller passed a buildVersion; on the governed API the same slot
+// is the project version id. tableId has no governed equivalent and is
+// ignored (kept in the signature so cobra flags stay compatible).
 func (c *Client) Compare(projectID, buildVersion, tableId string) (map[string]interface{}, error) {
-	path := fmt.Sprintf("/cli/compare/%s/%s", projectID, buildVersion)
-	if tableId != "" {
-		path += "?tableId=" + url.QueryEscape(tableId)
-	}
+	_ = tableId
+	path := fmt.Sprintf("/vibe/projects/%s/versions/%s/cloud/compare", projectID, buildVersion)
 	data, status, err := c.DoRequest("GET", path, nil)
 	if err != nil {
 		return nil, err
@@ -182,9 +207,12 @@ func (c *Client) Compare(projectID, buildVersion, tableId string) (map[string]in
 	return result, json.Unmarshal(data, &result)
 }
 
-// Deploy triggers deployment.
+// Deploy triggers deployment. The governed state-machine write is
+// POST /vibe/projects/:projectId/redeploy (allowlist.js; the release is
+// derived from project state, not from a buildVersion path segment).
 func (c *Client) Deploy(projectID, buildVersion string) (map[string]interface{}, error) {
-	path := fmt.Sprintf("/cli/deploy/%s/%s", projectID, buildVersion)
+	_ = buildVersion
+	path := fmt.Sprintf("/vibe/projects/%s/redeploy", projectID)
 	data, status, err := c.DoRequest("POST", path, nil)
 	if err != nil {
 		return nil, err
@@ -196,23 +224,22 @@ func (c *Client) Deploy(projectID, buildVersion string) (map[string]interface{},
 	return result, json.Unmarshal(data, &result)
 }
 
-// DeployInline triggers deployment with inline credentials.
+// DeployInline has no governed equivalent: /vibe deploys run on account
+// bindings registered server-side (/vibe/accountbinding), not inline
+// credentials sent with the deploy call.
 func (c *Client) DeployInline(projectID, buildVersion string, credentials interface{}) (map[string]interface{}, error) {
-	path := fmt.Sprintf("/cli/deploy/%s/%s/inline", projectID, buildVersion)
-	data, status, err := c.DoRequest("POST", path, credentials)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("inline deploy failed (HTTP %d): %s", status, string(data))
-	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	_ = projectID
+	_ = buildVersion
+	_ = credentials
+	return nil, notAvailable("inline deploy")
 }
 
-// Status checks deploy status.
+// Status reads the governed journey read model (X-01, allowlist.js:
+// GET /vibe/projects/:projectId/journey). The legacy caller passed a
+// buildVersion; on the governed API the same slot is the project id.
 func (c *Client) Status(projectID, buildVersion string) (map[string]interface{}, error) {
-	path := fmt.Sprintf("/cli/status/%s/%s", projectID, buildVersion)
+	_ = buildVersion
+	path := fmt.Sprintf("/vibe/projects/%s/journey", projectID)
 	data, status, err := c.DoRequest("GET", path, nil)
 	if err != nil {
 		return nil, err
@@ -224,9 +251,10 @@ func (c *Client) Status(projectID, buildVersion string) (map[string]interface{},
 	return result, json.Unmarshal(data, &result)
 }
 
-// Destroy triggers infrastructure destruction.
+// Destroy retires the project lifecycle (mapping decision "destroy →
+// lifecycle retire").
 func (c *Client) Destroy(projectID string) (map[string]interface{}, error) {
-	path := fmt.Sprintf("/cli/destroy/%s", projectID)
+	path := fmt.Sprintf("/vibe/projects/%s/lifecycle/retire", projectID)
 	data, status, err := c.DoRequest("POST", path, nil)
 	if err != nil {
 		return nil, err
@@ -360,9 +388,10 @@ func (c *Client) SettingsRemoveRole(body interface{}) (map[string]interface{}, e
 
 // ── CLI Tokens ──────────────────────────────────────────────────────────
 
-// TokenList lists CLI API tokens.
+// TokenList lists the governed stored credentials
+// (allowlist.js: GET /vibe/rbac/credentials).
 func (c *Client) TokenList() ([]map[string]interface{}, error) {
-	data, status, err := c.DoRequest("GET", "/cli/token", nil)
+	data, status, err := c.DoRequest("GET", "/vibe/rbac/credentials", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -373,29 +402,18 @@ func (c *Client) TokenList() ([]map[string]interface{}, error) {
 	return result, json.Unmarshal(data, &result)
 }
 
-// TokenCreate creates a new CLI API token.
+// TokenCreate has no governed equivalent: the allowlist exposes only the
+// read GET /vibe/rbac/credentials (credentials are managed server-side).
 func (c *Client) TokenCreate(body interface{}) (map[string]interface{}, error) {
-	data, status, err := c.DoRequest("POST", "/cli/token", body)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 && status != 201 {
-		return nil, fmt.Errorf("token create failed (HTTP %d): %s", status, string(data))
-	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	_ = body
+	return nil, notAvailable("token create")
 }
 
-// TokenRevoke revokes a CLI API token.
+// TokenRevoke has no governed equivalent: the allowlist exposes only the
+// read GET /vibe/rbac/credentials (credentials are managed server-side).
 func (c *Client) TokenRevoke(tokenID string) error {
-	data, status, err := c.DoRequest("DELETE", "/cli/token/"+tokenID, nil)
-	if err != nil {
-		return err
-	}
-	if status != 200 && status != 204 {
-		return fmt.Errorf("token revoke failed (HTTP %d): %s", status, string(data))
-	}
-	return nil
+	_ = tokenID
+	return notAvailable("token revoke")
 }
 
 // ── Key Recovery ────────────────────────────────────────────────────────
@@ -475,7 +493,7 @@ func (c *Client) KeystoreHalfB(keyID, stepUpToken string) (map[string]interface{
 
 // ProjectCreate creates a new project.
 func (c *Client) ProjectCreate(body interface{}) (map[string]interface{}, error) {
-	data, status, err := c.DoRequest("POST", "/cli/projects", body)
+	data, status, err := c.DoRequest("POST", "/vibe/projects", body)
 	if err != nil {
 		return nil, err
 	}
@@ -488,7 +506,7 @@ func (c *Client) ProjectCreate(body interface{}) (map[string]interface{}, error)
 
 // ProjectDelete deletes a project by ID.
 func (c *Client) ProjectDelete(projectID string) error {
-	data, status, err := c.DoRequest("DELETE", "/cli/projects/"+projectID, nil)
+	data, status, err := c.DoRequest("DELETE", "/vibe/projects/"+projectID, nil)
 	if err != nil {
 		return err
 	}
@@ -500,9 +518,10 @@ func (c *Client) ProjectDelete(projectID string) error {
 
 // ── Account Binding CRUD ────────────────────────────────────────────────
 
-// AccountList lists all account bindings.
+// AccountList lists all account bindings
+// (allowlist.js: GET /vibe/accountbinding).
 func (c *Client) AccountList() ([]map[string]interface{}, error) {
-	data, status, err := c.DoRequest("GET", "/cli/accounts", nil)
+	data, status, err := c.DoRequest("GET", "/vibe/accountbinding", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -515,7 +534,7 @@ func (c *Client) AccountList() ([]map[string]interface{}, error) {
 
 // AccountCreate creates a new account binding.
 func (c *Client) AccountCreate(body interface{}) (map[string]interface{}, error) {
-	data, status, err := c.DoRequest("POST", "/cli/accounts", body)
+	data, status, err := c.DoRequest("POST", "/vibe/accountbinding", body)
 	if err != nil {
 		return nil, err
 	}
@@ -528,7 +547,7 @@ func (c *Client) AccountCreate(body interface{}) (map[string]interface{}, error)
 
 // AccountDelete deletes an account binding by ID.
 func (c *Client) AccountDelete(accountID string) error {
-	data, status, err := c.DoRequest("DELETE", "/cli/accounts/"+accountID, nil)
+	data, status, err := c.DoRequest("DELETE", "/vibe/accountbinding/"+accountID, nil)
 	if err != nil {
 		return err
 	}
@@ -538,106 +557,58 @@ func (c *Client) AccountDelete(accountID string) error {
 	return nil
 }
 
-// AccountVerify verifies account binding credentials.
+// AccountVerify has no governed equivalent in the allowlist (account
+// bindings are verified server-side on POST /vibe/accountbinding).
 func (c *Client) AccountVerify(accountID string) (map[string]interface{}, error) {
-	data, status, err := c.DoRequest("POST", "/cli/accounts/"+accountID+"/verify", nil)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("account verify failed (HTTP %d): %s", status, string(data))
-	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	_ = accountID
+	return nil, notAvailable("account verify")
 }
 
 // ── Import Workflow ─────────────────────────────────────────────────────
 
-// ImportDiscover discovers cloud resources from an account binding.
+// ImportDiscover has no governed equivalent: /cli/import/* is legacy-only.
 func (c *Client) ImportDiscover(accountID string) (map[string]interface{}, error) {
-	body := map[string]interface{}{"accountId": accountID}
-	data, status, err := c.DoRequest("POST", "/cli/import/discover", body)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("import discover failed (HTTP %d): %s", status, string(data))
-	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	_ = accountID
+	return nil, notAvailable("import discover")
 }
 
-// ImportBuild creates a Build from imported resources.
+// ImportBuild has no governed equivalent: /cli/import/* is legacy-only.
 func (c *Client) ImportBuild(projectID, accountID string, selectedIDs []string) (map[string]interface{}, error) {
-	body := map[string]interface{}{
-		"projectId":   projectID,
-		"accountId":   accountID,
-		"selectedIds": selectedIDs,
-	}
-	data, status, err := c.DoRequest("POST", "/cli/import/build", body)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("import build failed (HTTP %d): %s", status, string(data))
-	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	_ = projectID
+	_ = accountID
+	_ = selectedIDs
+	return nil, notAvailable("import build")
 }
 
 // ── Local Deploy ────────────────────────────────────────────────────────
 
-// DeployLocal gets the local deploy bash scripts and configuration.
+// DeployLocal has no governed equivalent yet: the governed local-run flow is
+// the board local-feedback pipeline (/vibe/projects/:id/board/tasks/:taskId/local-feedback),
+// which is keyed on a board task, not on a build version.
 func (c *Client) DeployLocal(projectID, buildVersion string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/cli/deploy/%s/%s/local", projectID, buildVersion)
-	data, status, err := c.DoRequest("POST", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("local deploy generation failed (HTTP %d): %s", status, string(data))
-	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	_ = projectID
+	_ = buildVersion
+	return nil, notAvailable("local deploy")
 }
 
-// DeployComplete pushes the final tfstate back to the backend.
-// Requires a step-up token for MFA verification.
+// DeployComplete has no governed equivalent yet: the governed local-run flow
+// is the board local-feedback pipeline
+// (/vibe/projects/:id/board/tasks/:taskId/local-feedback), which is keyed on a
+// board task, not on a build version/execution id.
 func (c *Client) DeployComplete(projectID, buildVersion, executionID, stepUpToken string, tfStates map[string]string) (map[string]interface{}, error) {
-	url := fmt.Sprintf("/cli/deploy/%s/%s/complete", projectID, buildVersion)
-	body := map[string]interface{}{
-		"executionId": executionID,
-		"tfstates":    tfStates,
-	}
-
-	headers := map[string]string{
-		"X-StepUp-Token": stepUpToken,
-	}
-	data, status, err := c.DoRequestWithHeaders("POST", url, body, headers)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("deploy completion failed (HTTP %d): %s", status, string(data))
-	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
+	_ = projectID
+	_ = buildVersion
+	_ = executionID
+	_ = stepUpToken
+	_ = tfStates
+	return nil, notAvailable("deploy completion")
 }
 
-// DeepScanReport sends the discovered SSH public keys to the backend.
+// DeepScanReport has no governed equivalent: /cli/import/* is legacy-only.
 func (c *Client) DeepScanReport(token string, keys []string) error {
-	path := fmt.Sprintf("/cli/import/scan-report/%s", url.PathEscape(token))
-	body := map[string]interface{}{
-		"keys": keys,
-	}
-	data, status, err := c.DoRequest("POST", path, body)
-	if err != nil {
-		return err
-	}
-	if status != 200 {
-		return fmt.Errorf("scan report failed (HTTP %d): %s", status, string(data))
-	}
-	return nil
+	_ = token
+	_ = keys
+	return notAvailable("scan report")
 }
 
 // DoRaw sends a request with a RAW (non-JSON-marshalled) body and an explicit
