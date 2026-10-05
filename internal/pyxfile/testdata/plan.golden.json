@@ -1,0 +1,52 @@
+{
+  "specVersion": 1,
+  "app": "shopdemo",
+  "env": "prod",
+  "deployArea": "eu",
+  "provider": "aws",
+  "region": "EU West",
+  "repo": "github.com/acme/shop",
+  "components": [
+    {
+      "name": "public",
+      "type": "network",
+      "place": "prod",
+      "expose": [
+        80,
+        443
+      ]
+    },
+    {
+      "name": "web",
+      "type": "virtual-machine",
+      "size": "2cpu/8gb",
+      "os": "debian/12",
+      "place": "prod",
+      "network": "public"
+    },
+    {
+      "name": "closed",
+      "type": "network",
+      "place": "prod"
+    },
+    {
+      "name": "db",
+      "type": "managed-database",
+      "size": "small",
+      "place": "prod",
+      "network": "closed"
+    },
+    {
+      "name": "redis",
+      "type": "cache",
+      "features": [
+        "maxmemory-policy",
+        "tls"
+      ]
+    },
+    {
+      "name": "zone",
+      "type": "dns-zone"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+PYX 1
+APP shopdemo
+ENV prod
+
+# Keep data in the EU; explicit provider fallback.
+WHERE eu
+PROVIDER aws REGION "EU West"
+
+REPO github.com/acme/shop
+
+ARCH:
+  place prod:
+    network public:
+      expose: [80, 443]
+      machines:
+        web:
+          size: 2cpu/8gb
+          os: debian/12
+    network closed:
+      services:
+        db:
+          type: managed-database
+          size: small
+
+USE cache AS redis WITH maxmemory-policy AND tls
+USE dns AS zone
