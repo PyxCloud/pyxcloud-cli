@@ -1,9 +1,8 @@
-//go:build darwin
+//go:build darwin && cgo
 
 package passoauth
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -11,21 +10,27 @@ import (
 	"time"
 )
 
-func TestOwnedKeychainPromptRoundTrip(t *testing.T) {
+func TestOwnedKeychainLongNativeRoundTrip(t *testing.T) {
 	if os.Getenv("PASSO_KEYCHAIN_ROUNDTRIP") != "1" {
 		t.Skip("opt-in owned dummy keychain entry")
 	}
-	s := NewKeychainStore().(*keychainStore)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	service := fmt.Sprintf("passo-cli/owned-fixture-%d", time.Now().UnixNano())
-	fixture := `{"access_token":"owned-dummy","refresh_token":"dummy-quote-\"-newline-\n"}`
-	defer s.runner(ctx, "security", "delete-generic-password", "-a", "fixture", "-s", service)
-	if _, e := s.inputRunner(ctx, []byte(fixture+"\n"+fixture+"\n"), "security", "add-generic-password", "-a", "fixture", "-s", service, "-w"); e != nil {
-		t.Fatal("owned fixture save failed")
+	fixture := `{"access_token":"` + strings.Repeat("owned-dummy", 1000) + `","refresh_token":"dummy-quote-\"-newline-\n"}`
+	defer nativeKeychainDelete(service, "fixture")
+	if e := nativeKeychainSave(service, "fixture", []byte(fixture)); e != nil {
+		t.Fatal("owned native fixture save failed")
 	}
-	got, e := s.runner(ctx, "security", "find-generic-password", "-a", "fixture", "-s", service, "-w")
+
+	got, e := nativeKeychainLoad(service, "fixture")
 	if e != nil || strings.TrimSpace(string(got)) != fixture {
 		t.Fatal("owned fixture roundtrip mismatch")
+	}
+	updated := fixture + strings.Repeat(" update", 1000)
+	if nativeKeychainSave(service, "fixture", []byte(updated)) != nil {
+		t.Fatal("owned update failed")
+	}
+	got, e = nativeKeychainLoad(service, "fixture")
+	if e != nil || string(got) != updated {
+		t.Fatal("owned update roundtrip mismatch")
 	}
 }

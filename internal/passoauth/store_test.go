@@ -1,7 +1,6 @@
 package passoauth
 
 import (
-	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -12,47 +11,20 @@ func TestKeychainStoreSaveLoadDelete(t *testing.T) {
 	s := NewKeychainStore().(*keychainStore)
 	s.platform = "darwin"
 	data := map[string][]byte{}
-	s.runner = func(_ context.Context, _ string, args ...string) ([]byte, error) {
-		service := ""
-		password := ""
-		for i := 0; i < len(args); i++ {
-			if args[i] == "-s" && i+1 < len(args) {
-				service = args[i+1]
-			}
-			if args[i] == "-w" && i+1 < len(args) {
-				password = args[i+1]
-			}
+	s.nativeLoad = func(service, account string) ([]byte, error) {
+		v, ok := data[service]
+		if !ok {
+			return nil, errors.New("absent")
 		}
-		if args[0] == "add-generic-password" {
-			data[service] = []byte(password)
-			return nil, nil
-		}
-		if args[0] == "find-generic-password" {
-			v, ok := data[service]
-			if !ok {
-				return nil, errors.New("not found")
-			}
-			return v, nil
-		}
-		if args[0] == "delete-generic-password" {
-			delete(data, service)
-			return nil, nil
-		}
-		return nil, errors.New("unexpected command")
+		return v, nil
 	}
-	s.inputRunner = func(_ context.Context, input []byte, _ string, args ...string) ([]byte, error) {
-		service := ""
-		for i, a := range args {
-			if a == "-s" {
-				service = args[i+1]
-			}
+	s.nativeDelete = func(service, account string) error { delete(data, service); return nil }
+	s.nativeSave = func(service, account string, input []byte) error {
+		if account != "oauth" {
+			t.Fatal("wrong account")
 		}
-		lines := strings.Split(string(input), "\n")
-		if len(lines) != 3 || lines[0] != lines[1] {
-			t.Fatal("invalid password prompt input")
-		}
-		data[service] = []byte(lines[0])
-		return nil, nil
+		data[service] = append([]byte{}, input...)
+		return nil
 	}
 	want := Token{AccessToken: "access-secret", RefreshToken: "refresh-secret", ExpiresAt: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
 	if err := s.Save("sandbox", want); err != nil {
@@ -77,7 +49,7 @@ func TestKeychainStoreRejectsInvalidProfileBeforeRunning(t *testing.T) {
 	s := NewKeychainStore().(*keychainStore)
 	s.platform = "darwin"
 	runs := 0
-	s.runner = func(context.Context, string, ...string) ([]byte, error) { runs++; return nil, nil }
+	s.nativeSave = func(string, string, []byte) error { runs++; return nil }
 	if err := s.Save("../sandbox", Token{AccessToken: "secret"}); err == nil {
 		t.Fatal("expected invalid profile error")
 	}
@@ -90,10 +62,7 @@ func TestKeychainStoreDoesNotLeakCredentialInErrors(t *testing.T) {
 	s := NewKeychainStore().(*keychainStore)
 	s.platform = "darwin"
 	secret := "do-not-print-this-token"
-	s.runner = func(context.Context, string, ...string) ([]byte, error) { return []byte(secret), errors.New(secret) }
-	s.inputRunner = func(context.Context, []byte, string, ...string) ([]byte, error) {
-		return []byte(secret), errors.New(secret)
-	}
+	s.nativeSave = func(string, string, []byte) error { return errors.New(secret) }
 	err := s.Save("sandbox", Token{AccessToken: secret})
 	if err == nil {
 		t.Fatal("expected command failure")
@@ -106,22 +75,11 @@ func TestKeychainStoreDoesNotLeakCredentialInErrors(t *testing.T) {
 func TestKeychainSaveNeverPassesTokenAsArgument(t *testing.T) {
 	s := NewKeychainStore().(*keychainStore)
 	s.platform = "darwin"
-	s.runner = func(_ context.Context, _ string, args ...string) ([]byte, error) {
-		for _, a := range args {
-			if strings.Contains(a, "private-access") || strings.Contains(a, "private-refresh") {
-				t.Fatal("credential passed as argument")
-			}
+	s.nativeSave = func(service, account string, input []byte) error {
+		if service != "passo-cli/sandbox" || account != "oauth" || !strings.Contains(string(input), "private-access") || !strings.Contains(string(input), "private-refresh") {
+			t.Fatal("invalid private native payload")
 		}
-		return nil, nil
-	}
-	s.inputRunner = func(ctx context.Context, input []byte, name string, args ...string) ([]byte, error) {
-		if !strings.Contains(string(input), "private-access") || !strings.Contains(string(input), "private-refresh") {
-			t.Fatal("missing private stdin")
-		}
-		if args[len(args)-1] != "-w" {
-			t.Fatal("password prompt option must be last")
-		}
-		return s.runner(ctx, name, args...)
+		return nil
 	}
 	if err := s.Save("sandbox", Token{AccessToken: "private-access", RefreshToken: "private-refresh"}); err != nil {
 		t.Fatal(err)
