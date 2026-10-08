@@ -103,3 +103,46 @@ func TestLoginHelpExplainsExactApplicationKeychainAccess(t *testing.T) {
 		}
 	}
 }
+
+// This fixture never accesses the native credential store.
+type blockedTokenStore struct {
+	started  chan struct{}
+	release  chan struct{}
+	returned chan struct{}
+}
+
+func (s *blockedTokenStore) Load(string) (passoauth.Token, error) {
+	close(s.started)
+	<-s.release
+	close(s.returned)
+	return passoauth.Token{AccessToken: "late-dummy", ExpiresAt: time.Now().Add(time.Hour)}, nil
+}
+func (*blockedTokenStore) Save(string, passoauth.Token) error { panic("unexpected save") }
+func (*blockedTokenStore) Delete(string) error                { panic("unexpected delete") }
+func TestTokenCacheHonorsDeadlineDuringCredentialRead(t *testing.T) {
+	t.Setenv("PASSO_ACCESS_TOKEN", "")
+	store := &blockedTokenStore{make(chan struct{}), make(chan struct{}), make(chan struct{})}
+	access := cachedTokenAccess(store, "staging", time.Now, func(context.Context, string) (passoauth.Token, error) {
+		t.Error("unexpected refresh")
+		return passoauth.Token{}, nil
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { _, err := access(ctx); done <- err }()
+	<-store.started
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("got %v", err)
+		}
+	case <-time.After(time.Second):
+		close(store.release)
+		t.Fatal("credential read ignored command cancellation")
+	}
+	close(store.release)
+	<-store.returned
+	if token, err := access(context.Background()); token != "" || !errors.Is(err, context.Canceled) {
+		t.Fatalf("late credential was accepted: error=%v", err)
+	}
+}
