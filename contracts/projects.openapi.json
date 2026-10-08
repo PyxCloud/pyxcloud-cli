@@ -26,9 +26,24 @@
             "application/json": {
               "schema": {
                 "type": "object",
-                "description": "Handler decodes an arbitrary object and overwrites organisationId from verified identity.",
-                "properties": {},
-                "additionalProperties": true
+                "description": "Project creation: name is required; description is optional. The server derives organisationId from authenticated identity.",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "name"
+                ],
+                "example": {
+                  "name": "My project",
+                  "description": "Repository analysis and work plan"
+                }
               }
             }
           }

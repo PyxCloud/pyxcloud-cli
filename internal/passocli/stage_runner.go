@@ -164,6 +164,15 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 		}
 		return empty, &ExitError{30, "invalid_api_response"}
 	}
+	if op.Contract == "board-rest" {
+		if err := validateBoardResponse(operationKey, params, bodyObject, resp.Body); err != nil {
+			if mutation {
+				r.Ledger.Operations[operationKey] = passostate.Operation{Key: key, State: "uncertain", UpdatedAt: now()}
+				_ = passostate.Save(r.LedgerPath, r.Ledger)
+			}
+			return empty, err
+		}
+	}
 	oldProject, oldVersion, oldVersionLabel, oldSequence, oldRelease, oldRun := r.ProjectID, r.VersionID, r.VersionLabel, r.VersionSequence, r.ReleaseID, r.RunID
 	if err := r.observeIDs(resp.Body, operationKey); err != nil {
 		if mutation {
@@ -174,11 +183,31 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 	}
 	status := "observed"
 	ledgerState := ""
+	boardBlockedCode := ""
 	idsChanged := oldProject != r.ProjectID || oldVersion != r.VersionID || oldVersionLabel != r.VersionLabel || oldSequence != r.VersionSequence || oldRelease != r.ReleaseID || oldRun != r.RunID
 	if mutation {
 		status, ledgerState = "accepted", "accepted"
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
 			ledgerState, status = "completed", "completed"
+		}
+		if operationKey == "board-rest:complete" {
+			var outcome struct {
+				Status        string    `json:"status"`
+				Code          string    `json:"code"`
+				Missing       *[]string `json:"missing"`
+				FailingChecks *[]string `json:"failingChecks"`
+			}
+			valid := json.Unmarshal(resp.Body, &outcome) == nil && outcome.Missing != nil && outcome.FailingChecks != nil
+			if valid && outcome.Status == "blocked" {
+				ledgerState, status, boardBlockedCode = "blocked", "blocked", outcome.Code
+				if boardBlockedCode == "" {
+					boardBlockedCode = "completion_blocked"
+				}
+			} else if !valid || outcome.Status != "done" || len(*outcome.Missing) != 0 || len(*outcome.FailingChecks) != 0 {
+				r.Ledger.Operations[operationKey] = passostate.Operation{Key: key, State: "uncertain", UpdatedAt: now()}
+				_ = passostate.Save(r.LedgerPath, r.Ledger)
+				return empty, &ExitError{30, "invalid_completion_response"}
+			}
 		}
 		r.Ledger.Operations[operationKey] = passostate.Operation{Key: key, State: ledgerState, UpdatedAt: now()}
 	}
@@ -200,7 +229,10 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 	if mutation {
 		resultStatus = "accepted"
 	}
-	return Result{Stage: stage, Status: resultStatus, ProjectID: r.ProjectID, VersionID: r.VersionID, VersionLabel: r.VersionLabel, VersionSequence: r.VersionSequence, ReleaseID: r.ReleaseID, RunID: r.RunID, Data: resp.Body, Evidence: evidencePaths(path)}, nil
+	if boardBlockedCode != "" {
+		resultStatus = "blocked"
+	}
+	return Result{Code: boardBlockedCode, Stage: stage, Status: resultStatus, ProjectID: r.ProjectID, VersionID: r.VersionID, VersionLabel: r.VersionLabel, VersionSequence: r.VersionSequence, ReleaseID: r.ReleaseID, RunID: r.RunID, Data: resp.Body, Evidence: evidencePaths(path)}, nil
 }
 
 func (r *Runtime) matchesScope(op passocontract.Operation, params map[string]string, query url.Values, body map[string]json.RawMessage) bool {

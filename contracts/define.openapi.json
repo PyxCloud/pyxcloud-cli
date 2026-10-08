@@ -409,7 +409,8 @@
                   "runId": {
                     "type": "string"
                   }
-                }
+                },
+                "description": "Optional runId pins the attempt to the actual successful ingest run; omit input to use server current run. Do not retrigger an active or complete attempt."
               }
             }
           }

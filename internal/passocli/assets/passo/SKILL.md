@@ -19,7 +19,7 @@ passo --json --project "$PASSO_PROJECT_ID" status
 passo --json --project "$PASSO_PROJECT_ID" projects get
 ```
 
-Use `passo <command> --help` before choosing an action or input shape. For JSON input, create a file with the exact documented request body and pass its path with `--input`; never guess fields. For example, `passo --json --project "$PASSO_PROJECT_ID" define apply` derives and applies the compiled scope contract.
+Use `passo <command> --help` before choosing an action or input shape. The command catalogue exposes `inputSchema`, `inputExample`, and `bodyRequired` from the versioned API contract. For a new project, `passo projects create --help` documents required `name` and optional `description`; use that real shape rather than an empty object. Use the returned canonical project ID for `connect attach --repo owner/name` and subsequent discovery. Initial connection records selected repositories; discovery captures real source through the authenticated installed GitHub App. Read discovery and documentation before starting another run: connection may already trigger ingestion and documentation automatically. For JSON input, create a file with the exact documented request body and pass its path with `--input`; never guess fields. For example, `passo --json --project "$PASSO_PROJECT_ID" define apply` derives and applies the compiled scope contract.
 
 ## 2. Act
 

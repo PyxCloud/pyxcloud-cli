@@ -251,7 +251,7 @@
             "type": "integer"
           },
           "scanner": {
-            "description": "secfindings.Source — derived, not restated",
+            "description": "secfindings.Source \u2014 derived, not restated",
             "type": "string"
           },
           "startedAt": {
@@ -281,7 +281,7 @@
             "type": "string"
           },
           "coverage": {
-            "description": "secfindings.Coverage — derived, not restated",
+            "description": "secfindings.Coverage \u2014 derived, not restated",
             "type": "object"
           },
           "fallbackReason": {
@@ -317,7 +317,7 @@
     }
   },
   "info": {
-    "description": "REST face of the version-bound Security Scan aggregate (epic #1326). The scan page is READ-ONLY: locking Documentation/BoardOS creates an immutable project version and automatically starts its scan; the frontend observes the served Run and follows the backend-provided nextRoute. There is no start, triage, approval, remediation, skip or continue control on this surface. ETA is a structured projection distinct from zero (absent means UNKNOWN, never 0 seconds), and reaching nextRoute=SECURITY_GATE is a navigation fact — it carries no GO/NO_GO opinion.",
+    "description": "REST face of the version-bound Security Scan aggregate (epic #1326). The scan page is READ-ONLY: locking Documentation/BoardOS creates an immutable project version and automatically starts its scan; the frontend observes the served Run and follows the backend-provided nextRoute. There is no start, triage, approval, remediation, skip or continue control on this surface. ETA is a structured projection distinct from zero (absent means UNKNOWN, never 0 seconds), and reaching nextRoute=SECURITY_GATE is a navigation fact \u2014 it carries no GO/NO_GO opinion.",
     "title": "passo.build security scan API",
     "version": "1.0.0"
   },
@@ -387,6 +387,34 @@
           }
         },
         "summary": "The read-only scan run for a locked project version: state, phase, targets, ETA and next route"
+      }
+    },
+    "/vibe/projects/{projectId}/security/scan-baseline": {
+      "post": {
+        "operationId": "startSecurityBaselineScan",
+        "summary": "Scan current server-pinned locked version",
+        "parameters": [
+          {
+            "name": "projectId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Durable scan accepted"
+          },
+          "200": {
+            "description": "Idempotent durable scan replay"
+          },
+          "409": {
+            "description": "Current version unavailable or scan already running"
+          }
+        }
       }
     }
   }

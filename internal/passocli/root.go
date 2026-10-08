@@ -123,6 +123,7 @@ func New(opts Options) *cobra.Command {
 	}
 	root.AddCommand(newAuthCommands(runtimeFor)...)
 	root.AddCommand(newDesignCommands(runtimeFor)...)
+	root.AddCommand(newBoardCommands(runtimeFor))
 	root.AddCommand(newPreexecCommands(runtimeFor)...)
 	root.AddCommand(newReleaseCommands(runtimeFor)...)
 	root.AddCommand(newDeployCommands(runtimeFor)...)
