@@ -47,6 +47,10 @@ func newCommandsCatalogCommand(root *cobra.Command, asJSON *bool) *cobra.Command
 				return err
 			}
 			for _, command := range catalog.Commands {
+				visible, _, findErr := root.Find(strings.Fields(command.Path))
+				if findErr == nil && visible != nil && !visible.Runnable() && visible.HasAvailableSubCommands() {
+					continue
+				}
 				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "  %-28s %s\n", command.Path, command.ShortDescription); err != nil {
 					return err
 				}

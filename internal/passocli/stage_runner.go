@@ -190,6 +190,18 @@ func (r *Runtime) PerformWithIfMatch(ctx context.Context, stage, operationKey st
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
 			ledgerState, status = "completed", "completed"
 		}
+		if operationKey == "board-rest:publish-source" {
+			var outcome struct {
+				DiscoveryState string `json:"discoveryState"`
+			}
+			_ = json.Unmarshal(resp.Body, &outcome)
+			switch outcome.DiscoveryState {
+			case "queued", "running":
+				status, ledgerState = "accepted", "accepted"
+			case "failed", "cancelled", "stale":
+				status, ledgerState, boardBlockedCode = "blocked", "blocked", "published_source_recapture_"+outcome.DiscoveryState
+			}
+		}
 		if operationKey == "board-rest:complete" {
 			var outcome struct {
 				Status        string    `json:"status"`
