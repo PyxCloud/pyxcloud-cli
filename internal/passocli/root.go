@@ -201,29 +201,9 @@ func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64,
 	}
 	now := opts.Now
 	store := opts.Store
-	access := func(ctx context.Context) (string, error) {
-		if env := os.Getenv("PASSO_ACCESS_TOKEN"); env != "" {
-			return env, nil
-		}
-		tok, e := store.Load(profile)
-		if e != nil {
-			return "", e
-		}
-		if tok.ExpiresAt.After(now().Add(30 * time.Second)) {
-			return tok.AccessToken, nil
-		}
-		if tok.RefreshToken == "" {
-			return "", errors.New("credentials unavailable")
-		}
-		fresh, e := (&passoauth.OAuth{Profile: p, HTTPClient: opts.HTTPClient}).Refresh(ctx, tok.RefreshToken)
-		if e != nil {
-			return "", e
-		}
-		if e = store.Save(profile, fresh); e != nil {
-			return "", e
-		}
-		return fresh.AccessToken, nil
-	}
+	access := cachedTokenAccess(store, profile, now, func(ctx context.Context, refreshToken string) (passoauth.Token, error) {
+		return (&passoauth.OAuth{Profile: p, HTTPClient: opts.HTTPClient}).Refresh(ctx, refreshToken)
+	})
 	client := passotransport.New(p.APIURL, access)
 	if opts.HTTPClient != nil {
 		client.HTTPClient = opts.HTTPClient

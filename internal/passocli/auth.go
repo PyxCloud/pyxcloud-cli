@@ -15,7 +15,7 @@ import (
 type runtimeFactory func(*cobra.Command) (*Runtime, error)
 
 func newAuthCommands(factory runtimeFactory) []*cobra.Command {
-	login := &cobra.Command{Use: "login", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+	login := &cobra.Command{Use: "login", Short: "Sign in with the selected profile", Long: "Sign in through normal browser SSO. On macOS, use one unchanged official passo executable for the journey. If Keychain access is denied, stop retries and resolve access for that exact application; never grant access to all applications. Each command caches credentials in memory and refreshes them when needed.", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		device, _ := cmd.Flags().GetBool("device")
 		r, e := factory(cmd)
 		if e != nil {
