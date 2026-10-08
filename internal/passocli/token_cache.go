@@ -29,7 +29,7 @@ func cachedTokenAccess(store passoauth.Store, profile string, now func() time.Ti
 			return "", err
 		}
 		if !loaded {
-			token, loadErr = store.Load(profile)
+			token, loadErr = loadTokenBeforeDeadline(ctx, store, profile)
 			loaded = true
 		}
 		if loadErr != nil {
@@ -51,5 +51,28 @@ func cachedTokenAccess(store passoauth.Store, profile string, now func() time.Ti
 		}
 		token = fresh
 		return token.AccessToken, nil
+	}
+}
+
+// Native credential reads may wait in Security.framework beyond the HTTP
+// timeout. A late read is discarded and cannot refresh, save or use its token.
+func loadTokenBeforeDeadline(ctx context.Context, store passoauth.Store, profile string) (passoauth.Token, error) {
+	type result struct {
+		token passoauth.Token
+		err   error
+	}
+	done := make(chan result, 1)
+	go func() {
+		token, err := store.Load(profile)
+		done <- result{token, err}
+	}()
+	select {
+	case <-ctx.Done():
+		return passoauth.Token{}, ctx.Err()
+	case loaded := <-done:
+		if err := ctx.Err(); err != nil {
+			return passoauth.Token{}, err
+		}
+		return loaded.token, loaded.err
 	}
 }
