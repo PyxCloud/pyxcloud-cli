@@ -101,6 +101,9 @@ func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Opt
 		if errors.As(err, &phase) {
 			result.FailurePhase = phase.phase
 		}
+		if msg == "credential_access_required" {
+			result.NextAction = map[string]any{"key": "resolve_credential_access", "label": credentialAccessGuidance, "automaticRetry": false}
+		}
 		if msg == "credential_store_unavailable" {
 			result.NextAction = map[string]any{"key": "resolve_credential_store", "label": credentialStoreGuidance, "automaticRetry": false}
 		}
@@ -112,6 +115,9 @@ func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Opt
 	if errors.As(err, &phase) {
 		_, _ = fmt.Fprintln(errOut, "Failure phase: "+phase.phase)
 	}
+	if msg == "credential_access_required" {
+		_, _ = fmt.Fprintln(errOut, credentialAccessGuidance)
+	}
 	if msg == "credential_store_unavailable" {
 		_, _ = fmt.Fprintln(errOut, credentialStoreGuidance)
 	}
@@ -119,3 +125,5 @@ func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Opt
 }
 
 const credentialStoreGuidance = "Passo could not access macOS Keychain. Stop automatic retries. Use the same official passo executable throughout the journey and resolve Keychain access for that exact application, then retry once. This error does not establish that your login expired."
+
+const credentialAccessGuidance = "macOS requires access to the stored Passo credential. Stop automatic retries. Resolve Keychain access for this exact official passo application, then retry once. Your stored session was preserved; this error does not establish that login expired."

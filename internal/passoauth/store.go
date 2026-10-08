@@ -10,6 +10,10 @@ import (
 
 // ErrCredentialStoreUnavailable reports a failed native store operation without
 // carrying native messages, credentials or an assumption about token expiry.
+// ErrCredentialAccessRequired means the OS refused a noninteractive read.
+// It does not establish a missing token or an expired login.
+var ErrCredentialAccessRequired = errors.New("credential access required")
+
 var ErrCredentialStoreUnavailable = errors.New("credential store unavailable")
 
 // Token is an OAuth token set held by the local credential store.
@@ -45,6 +49,9 @@ func (s *keychainStore) Load(profile string) (Token, error) {
 		return Token{}, errors.New("Keychain token storage is supported only on macOS")
 	}
 	out, err := s.nativeLoad("passo-cli/"+profile, "oauth")
+	if errors.Is(err, ErrCredentialAccessRequired) {
+		return Token{}, ErrCredentialAccessRequired
+	}
 	if err != nil {
 		return Token{}, ErrCredentialStoreUnavailable
 	}

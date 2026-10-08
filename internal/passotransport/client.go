@@ -122,6 +122,9 @@ func (c *Client) DoWithIfMatch(ctx context.Context, method, path string, body js
 				}
 				return zero, fmt.Errorf("authentication unavailable: %w", ctx.Err())
 			}
+			if errors.Is(tokenErr, passoauth.ErrCredentialAccessRequired) {
+				return zero, passoauth.ErrCredentialAccessRequired
+			}
 			if errors.Is(tokenErr, passoauth.ErrCredentialStoreUnavailable) {
 				return zero, passoauth.ErrCredentialStoreUnavailable
 			}

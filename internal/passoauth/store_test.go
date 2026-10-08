@@ -100,3 +100,21 @@ func TestNativeFailuresKeepSafeCredentialStoreIdentity(t *testing.T) {
 		}
 	}
 }
+
+func TestNoninteractiveAccessRequiredPreservesStoredRecord(t *testing.T) {
+	s := NewKeychainStore().(*keychainStore)
+	s.platform = "darwin"
+	reads := 0
+	s.nativeLoad = func(service, account string) ([]byte, error) {
+		reads++
+		if service != "passo-cli/staging" || account != "oauth" {
+			t.Fatal("existing record scope changed")
+		}
+		return nil, ErrCredentialAccessRequired
+	}
+	s.nativeSave = func(string, string, []byte) error { t.Fatal("denied load rewrote credential"); return nil }
+	s.nativeDelete = func(string, string) error { t.Fatal("denied load deleted credential"); return nil }
+	if _, err := s.Load("staging"); !errors.Is(err, ErrCredentialAccessRequired) || reads != 1 {
+		t.Fatal("OS interaction refusal lost")
+	}
+}

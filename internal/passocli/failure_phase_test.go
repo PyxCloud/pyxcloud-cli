@@ -67,3 +67,17 @@ func TestRefreshCancellationReportsPhaseWithoutSaving(t *testing.T) {
 		t.Fatal("refresh cancellation phase or custody lost")
 	}
 }
+
+func TestCredentialAccessRequiredIsActionableWithoutPrivateDetails(t *testing.T) {
+	t.Setenv("PASSO_ACCESS_TOKEN", "")
+	var out, errOut bytes.Buffer
+	code := execute(context.Background(), []string{"--profile", "sandbox", "--project", "114", "--ledger", filepath.Join(t.TempDir(), "ledger.json"), "--json", "status"}, &out, &errOut, Options{Store: &countedTokenStore{err: passoauth.ErrCredentialAccessRequired}})
+	var result Result
+	if json.Unmarshal(out.Bytes(), &result) != nil || code != 10 || result.Code != "credential_access_required" {
+		t.Fatalf("safe access code missing: %s", out.String())
+	}
+	action, ok := result.NextAction.(map[string]any)
+	if !ok || action["key"] != "resolve_credential_access" || action["automaticRetry"] != false || errOut.Len() != 0 {
+		t.Fatal("access recovery or retry contract lost")
+	}
+}
