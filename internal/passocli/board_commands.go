@@ -70,6 +70,9 @@ type boardExecute struct {
 }
 
 func strictBoardInput(action string, b json.RawMessage) error {
+	if action == "publish-source" {
+		return publishSourceInput(b)
+	}
 	fail := func() error { return &ExitError{20, "invalid_board_input"} }
 	if len(b) == 0 {
 		b = json.RawMessage(`{}`)
@@ -157,13 +160,14 @@ func strictBoardInput(action string, b json.RawMessage) error {
 }
 func boardInputDescription(cmd *cobra.Command, action string) {
 	schemas := map[string]string{
+		"publish-source":  `{"type":"object","required":["versionLabel"],"properties":{"versionLabel":{"type":"string"}},"additionalProperties":false}`,
 		"accept-findings": `{"type":"object","required":["fingerprints"],"properties":{"fingerprints":{"type":"array","minItems":1,"maxItems":200,"items":{"type":"string","minLength":1,"maxLength":200}}},"additionalProperties":false}`,
 		"claim":           `{"type":"object","properties":{"agentId":{"type":"string"},"capacity":{"type":"object","properties":{"remainingTokens":{"type":"integer"},"windowTokens":{"type":"integer"},"resetAt":{"type":"string","format":"date-time"},"modelClass":{"type":"string"},"unknown":{"type":"boolean"}}}},"additionalProperties":false}`,
 		"execute":         `{"type":"object","required":["commandId"],"properties":{"commandId":{"type":"string","format":"uuid"}},"additionalProperties":false}`,
 		"verify":          `{"oneOf":[{"type":"object","required":["mode"],"properties":{"mode":{"const":"independent"}},"additionalProperties":false},{"type":"object","required":["verdict"],"properties":{"verdict":{"enum":["pass","fail"]},"findings":{"type":"string"},"checks":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}]}`,
 		"plan":            `{"type":"object","required":["steps"],"properties":{"steps":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string"},"done":{"type":"boolean"}}}},"note":{"type":"string"}},"additionalProperties":false}`,
 	}
-	examples := map[string]string{"accept-findings": `{"fingerprints":["actual-finding-fingerprint"]}`, "claim": `{}`, "execute": `{"commandId":"11111111-1111-4111-8111-111111111111"}`, "verify": `{"mode":"independent"}`, "plan": `{"steps":[{"id":"s1","title":"Read the actual task evidence","done":false}]}`, "complete": `{"fenceToken":7,"usage":{"tokensIn":100,"tokensOut":20},"evidence":[]}`, "release": `{"fenceToken":7,"reason":"Actual handoff reason"}`, "resume": `{"resumeNote":"Continue the actual task"}`}
+	examples := map[string]string{"publish-source": `{"versionLabel":"actual-existing-version-label"}`, "accept-findings": `{"fingerprints":["actual-finding-fingerprint"]}`, "claim": `{}`, "execute": `{"commandId":"11111111-1111-4111-8111-111111111111"}`, "verify": `{"mode":"independent"}`, "plan": `{"steps":[{"id":"s1","title":"Read the actual task evidence","done":false}]}`, "complete": `{"fenceToken":7,"usage":{"tokensIn":100,"tokensOut":20},"evidence":[]}`, "release": `{"fenceToken":7,"reason":"Actual handoff reason"}`, "resume": `{"resumeNote":"Continue the actual task"}`}
 	schema := schemas[action]
 	if schema == "" {
 		required := `["fenceToken"]`
@@ -181,7 +185,7 @@ func boardInputDescription(cmd *cobra.Command, action string) {
 }
 func newBoardCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) *cobra.Command {
 	root := &cobra.Command{Use: "board", Short: "Read and execute canonical scoped board tasks"}
-	names := []string{"findings", "accept-findings", "status", "list", "task", "claim", "release", "plan", "execute", "latest", "availability", "verify", "complete", "resume", "execution", "evidence"}
+	names := []string{"findings", "accept-findings", "status", "list", "task", "claim", "release", "plan", "execute", "latest", "availability", "verify", "complete", "resume", "publish-source", "execution", "evidence"}
 	for _, name := range names {
 		action := name
 		read := action == "findings" || action == "status" || action == "list" || action == "task" || action == "latest" || action == "availability" || action == "execution" || action == "evidence"
@@ -323,6 +327,9 @@ func (r *Runtime) boardExecutionRead(ctx context.Context, params map[string]stri
 // Verify any returned task identity before allowing mutation metadata to become
 // completed. Console execution receipts additionally bind caller command UUID.
 func validateBoardResponse(operation string, params map[string]string, input map[string]json.RawMessage, body json.RawMessage) error {
+	if operation == "board-rest:publish-source" {
+		return validatePublishedSource(params, input, body)
+	}
 	if operation == "board-rest:accept-findings" {
 		var requested []string
 		if json.Unmarshal(input["fingerprints"], &requested) != nil {

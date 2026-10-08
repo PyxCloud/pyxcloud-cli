@@ -8,6 +8,7 @@ const BoardRESTSource = "PyxCloud/pyx-backend:go/internal/resource/vibe/routes.g
 func init() {
 	actions := map[string]struct{ method, path string }{
 		"status": {"GET", "/status"}, "list": {"GET", "/features"}, "task": {"GET", "/tasks/{taskId}"}, "claim": {"POST", "/tasks/{taskId}/claim"}, "release": {"POST", "/tasks/{taskId}/release"}, "resume": {"POST", "/tasks/{taskId}/resume"}, "plan": {"PUT", "/tasks/{taskId}/plan"}, "execute": {"POST", "/tasks/{taskId}/execute"}, "latest": {"GET", "/tasks/{taskId}/execution"}, "availability": {"GET", "/tasks/{taskId}/execution-availability"}, "verify": {"POST", "/tasks/{taskId}/verify"}, "complete": {"POST", "/tasks/{taskId}/complete"}, "execution": {"GET", "/executions/{executionId}"}, "evidence": {"GET", "/artifacts/{artifactId}"}}
+	actions["publish-source"] = struct{ method, path string }{"POST", "/tasks/{taskId}/publish-source"}
 	actions["findings"] = struct{ method, path string }{"GET", "/security/ingest"}
 	actions["accept-findings"] = struct{ method, path string }{"POST", "/security/ingest/accept"}
 	for name, a := range actions {
