@@ -37,10 +37,22 @@ echo "⬇️  Downloading from ${URL}..."
 TMP_DIR=$(mktemp -d)
 curl -fsSL "${URL}" -o "${TMP_DIR}/pyxcloud.tar.gz"
 
+ARCHIVE="pyxcloud_${OS_NAME}_${ARCH_NAME}.tar.gz"
+CHECKSUM_URL="${URL%/*}/checksums.txt"
+curl -fsSL "$CHECKSUM_URL" -o "${TMP_DIR}/checksums.txt"
+EXPECTED=$(awk -v file="$ARCHIVE" '$2 == file {print $1}' "${TMP_DIR}/checksums.txt")
+[[ "$EXPECTED" =~ ^[a-fA-F0-9]{64}$ ]] || { echo 'missing or ambiguous archive checksum' >&2; exit 1; }
+if command -v sha256sum >/dev/null 2>&1; then
+    ACTUAL=$(sha256sum "${TMP_DIR}/pyxcloud.tar.gz" | awk '{print $1}')
+else
+    ACTUAL=$(shasum -a 256 "${TMP_DIR}/pyxcloud.tar.gz" | awk '{print $1}')
+fi
+[ "$ACTUAL" = "$EXPECTED" ] || { echo 'archive checksum mismatch' >&2; exit 1; }
+
 echo "📦 Extracting archive..."
 tar -xzf "${TMP_DIR}/pyxcloud.tar.gz" -C "${TMP_DIR}"
 
-if [ ! -f "${TMP_DIR}/pyxcloud" ]; then
+if [ ! -f "${TMP_DIR}/pyxcloud" ] || [ ! -f "${TMP_DIR}/passo" ]; then
     echo "❌ Download failed or architecture not matched. Run native install: https://pyxcloud.io/docs"
     rm -rf "${TMP_DIR}"
     exit 1
@@ -48,12 +60,14 @@ fi
 
 DEST_DIR="/usr/local/bin"
 echo "🔑 Moving binary to ${DEST_DIR} (sudo privileges may be requested)..."
-if [ -w "$DEST_DIR" ]; then
-    mv "${TMP_DIR}/pyxcloud" "${DEST_DIR}/pyxcloud"
-else
-    sudo mv "${TMP_DIR}/pyxcloud" "${DEST_DIR}/pyxcloud"
-fi
-chmod +x "${DEST_DIR}/pyxcloud"
+for BINARY in pyxcloud passo; do
+    if [ -w "$DEST_DIR" ]; then
+        mv "${TMP_DIR}/${BINARY}" "${DEST_DIR}/${BINARY}"
+    else
+        sudo mv "${TMP_DIR}/${BINARY}" "${DEST_DIR}/${BINARY}"
+    fi
+    chmod +x "${DEST_DIR}/${BINARY}"
+done
 
 # Install Autocompletions dynamically using the valid binary we just deposited
 echo "🧩 Configuring command autocompletions..."
@@ -79,4 +93,4 @@ fi
 
 rm -rf "${TMP_DIR}"
 echo "✅ PyxCloud CLI installed successfully!"
-echo "   Run 'pyxcloud --help' to get started."
+echo "   Run 'passo --help' for the agent workflow or 'pyxcloud --help' for legacy tools."
