@@ -25,6 +25,10 @@ Use one reviewed official `passo` executable at one stable path for login and th
 - A proposed fix grants all applications access, copies tokens to public files, or passes credentials in arguments: reject that fix.
 - A release claims stable signed identity without a valid production signing identity: stop that claim.
 
+## Actionable failures
+
+A failed native credential operation returns exit10 and `credential_store_unavailable`. Human output explains the exact-application recovery step; JSON provides `nextAction.key=resolve_credential_store` and `automaticRetry=false`. The command performs no API request after a failed load and never starts another login automatically. Native error details are discarded, so this state does not assert that login expired or distinguish a locked, denied or missing item.
+
 ## Signing limitation
 
 Ad-hoc signing verifies the current artifact's integrity. Its designated requirement can depend on its code hash, which changes after rebuilding; a fixed path or identifier alone does not establish trust across releases. Stable production identity requires a genuine issuer-backed signing identity and a reviewed signing pipeline. Do not manufacture a globally trusted certificate or substitute an unrestricted ACL. Current local metadata reported no valid code-signing identities; production signing remains an explicit prerequisite, separate from native framework support.

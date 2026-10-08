@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -291,9 +292,9 @@ func TestVersionSequenceFlagDrivesCloudRouteWithoutReplacingUUID(t *testing.T) {
 }
 
 func TestMonitorDefaultsToOneShotAndWatchReturnsTypedDeadline(t *testing.T) {
-	var calls int
+	var calls atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		calls++
+		calls.Add(1)
 		_, _ = io.WriteString(w, `{"data":{"projectId":7,"stage":"board","primaryAction":{"key":"open_board"}}}`)
 	}))
 	defer srv.Close()
@@ -307,10 +308,10 @@ func TestMonitorDefaultsToOneShotAndWatchReturnsTypedDeadline(t *testing.T) {
 	if err := cmd.ExecuteContext(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || strings.Count(out.String(), "\n") != 1 {
-		t.Fatalf("calls=%d output=%q", calls, out.String())
+	if calls.Load() != 1 || strings.Count(out.String(), "\n") != 1 {
+		t.Fatalf("calls=%d output=%q", calls.Load(), out.String())
 	}
-	calls = 0
+	calls.Store(0)
 	out.Reset()
 	cmd = New(Options{Out: &out, Err: &errOut, Store: store})
 	cmd.SetArgs([]string{"--project", "7", "--json", "--timeout=20ms", "--poll-interval=1ms", "monitor", "--watch"})
@@ -319,8 +320,8 @@ func TestMonitorDefaultsToOneShotAndWatchReturnsTypedDeadline(t *testing.T) {
 	if !errors.As(err, &ee) || ee.Code != "deadline_exceeded" || ee.ExitCode != 20 {
 		t.Fatalf("got %v", err)
 	}
-	if calls < 1 || strings.Count(out.String(), "\n") < 1 {
-		t.Fatalf("calls=%d records=%q", calls, out.String())
+	if calls.Load() < 1 || strings.Count(out.String(), "\n") < 1 {
+		t.Fatalf("calls=%d records=%q", calls.Load(), out.String())
 	}
 }
 

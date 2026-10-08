@@ -38,6 +38,9 @@ func newAuthCommands(factory runtimeFactory) []*cobra.Command {
 			return classify(e)
 		}
 		if e = r.store.Save(r.Profile.Name, token); e != nil {
+			if errors.Is(e, passoauth.ErrCredentialStoreUnavailable) {
+				return classify(e)
+			}
 			return &ExitError{20, "credential_save_failed"}
 		}
 		return r.Emit(Result{Status: "authenticated"})
@@ -49,6 +52,9 @@ func newAuthCommands(factory runtimeFactory) []*cobra.Command {
 			return e
 		}
 		if e = r.store.Delete(r.Profile.Name); e != nil {
+			if errors.Is(e, passoauth.ErrCredentialStoreUnavailable) {
+				return classify(e)
+			}
 			return &ExitError{20, "logout_failed"}
 		}
 		return r.Emit(Result{Status: "logged_out"})
@@ -89,9 +95,18 @@ func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Opt
 		if _, ok := err.(*ExitError); !ok {
 			msg = "command_failed"
 		}
-		_ = json.NewEncoder(out).Encode(Result{SchemaVersion: 1, Status: "error", Code: msg})
+		result := Result{SchemaVersion: 1, Status: "error", Code: msg}
+		if msg == "credential_store_unavailable" {
+			result.NextAction = map[string]any{"key": "resolve_credential_store", "label": credentialStoreGuidance, "automaticRetry": false}
+		}
+		_ = json.NewEncoder(out).Encode(result)
 		return code
 	}
 	_, _ = fmt.Fprintln(errOut, msg)
+	if msg == "credential_store_unavailable" {
+		_, _ = fmt.Fprintln(errOut, credentialStoreGuidance)
+	}
 	return code
 }
+
+const credentialStoreGuidance = "Passo could not access macOS Keychain. Stop automatic retries. Use the same official passo executable throughout the journey and resolve Keychain access for that exact application, then retry once. This error does not establish that your login expired."

@@ -85,3 +85,18 @@ func TestKeychainSaveNeverPassesTokenAsArgument(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestNativeFailuresKeepSafeCredentialStoreIdentity(t *testing.T) {
+	s := NewKeychainStore().(*keychainStore)
+	s.platform = "darwin"
+	secret := errors.New("private-native-secret")
+	s.nativeLoad = func(string, string) ([]byte, error) { return nil, secret }
+	s.nativeSave = func(string, string, []byte) error { return secret }
+	s.nativeDelete = func(string, string) error { return secret }
+	_, load := s.Load("staging")
+	for _, err := range []error{load, s.Save("staging", Token{AccessToken: "private-access"}), s.Delete("staging")} {
+		if !errors.Is(err, ErrCredentialStoreUnavailable) || strings.Contains(err.Error(), "private") {
+			t.Fatalf("unsafe store error: %v", err)
+		}
+	}
+}
