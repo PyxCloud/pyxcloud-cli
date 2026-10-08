@@ -12,7 +12,7 @@ legacy `pyxcloud board` MCP command.
 ```sh
 python3 scripts/test_native_cli_release.py
 goreleaser check
-actionlint -shellcheck='' -ignore 'label "ubicloud-standard-2" is unknown' .github/workflows/releaser.yml
+actionlint -shellcheck='' .github/workflows/releaser.yml
 bash -n scripts/build-native-cli.sh
 bash -n scripts/install.sh
 ```
@@ -71,3 +71,7 @@ approval; a separately approved signing issuer is required for that claim.
 | Publish Linux assets before native jobs finish | Publish only after portable and both native jobs pass. |
 | Treat ad-hoc signing as notarization | State the exact signing boundary and preserve its separate prerequisite. |
 | Use a static bearer read as durable OAuth proof | Verify normal human PKCE, stable subject, native storage and actual refresh. |
+
+## Measured Linux runner availability
+
+On 2026-10-08 the repository and organization self-hosted inventories reported zero registered runners. Build-only run 37758518071 remained queued on legacy pyxflow labels; run 37759892241 remained queued on ubicloud-standard-2 while both native jobs succeeded. This CLI repository's ubuntu-latest contract checks repeatedly completed successfully, so Linux packaging and gated publication use that same available hosted runner. Each job retains its 15-minute execution timeout. Runner execution time and billing must be read from the actual workflow/account usage; these observations do not establish a dollar cost or a guaranteed queue deadline. No release is published by build-only runs.

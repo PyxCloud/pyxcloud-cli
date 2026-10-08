@@ -24,7 +24,7 @@ class NativeCLIRelease(unittest.TestCase):
   self.assertLess(installer.index('checksum mismatch'),installer.index('tar -xzf'))
  def test_linux_release_uses_available_canonical_runner(self):
   workflow=(ROOT/'.github/workflows/releaser.yml').read_text()
-  self.assertEqual(workflow.count('runs-on: ubicloud-standard-2'),2)
+  self.assertEqual(workflow.count('runs-on: ubuntu-latest'),2)
   self.assertNotIn('pyxflow',workflow)
  def test_native_builder_refuses_linux_before_go_or_output(self):
   with tempfile.TemporaryDirectory() as tmp:
