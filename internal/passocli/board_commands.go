@@ -61,6 +61,10 @@ type boardPlan struct {
 	Steps *[]boardStep `json:"steps"`
 	Note  string       `json:"note,omitempty"`
 }
+type boardAcceptFindings struct {
+	Fingerprints []string `json:"fingerprints"`
+}
+
 type boardExecute struct {
 	CommandID string `json:"commandId"`
 }
@@ -72,6 +76,8 @@ func strictBoardInput(action string, b json.RawMessage) error {
 	}
 	var target any
 	switch action {
+	case "accept-findings":
+		target = &boardAcceptFindings{}
 	case "claim":
 		target = &boardClaim{}
 	case "release", "complete", "resume":
@@ -91,6 +97,15 @@ func strictBoardInput(action string, b json.RawMessage) error {
 		return fail()
 	}
 	switch v := target.(type) {
+	case *boardAcceptFindings:
+		if len(v.Fingerprints) == 0 || len(v.Fingerprints) > 200 {
+			return fail()
+		}
+		for _, fp := range v.Fingerprints {
+			if strings.TrimSpace(fp) == "" || len(fp) > 200 {
+				return fail()
+			}
+		}
 	case *boardExecute:
 		if !boardUUID.MatchString(v.CommandID) {
 			return fail()
@@ -142,12 +157,13 @@ func strictBoardInput(action string, b json.RawMessage) error {
 }
 func boardInputDescription(cmd *cobra.Command, action string) {
 	schemas := map[string]string{
-		"claim":   `{"type":"object","properties":{"agentId":{"type":"string"},"capacity":{"type":"object","properties":{"remainingTokens":{"type":"integer"},"windowTokens":{"type":"integer"},"resetAt":{"type":"string","format":"date-time"},"modelClass":{"type":"string"},"unknown":{"type":"boolean"}}}},"additionalProperties":false}`,
-		"execute": `{"type":"object","required":["commandId"],"properties":{"commandId":{"type":"string","format":"uuid"}},"additionalProperties":false}`,
-		"verify":  `{"oneOf":[{"type":"object","required":["mode"],"properties":{"mode":{"const":"independent"}},"additionalProperties":false},{"type":"object","required":["verdict"],"properties":{"verdict":{"enum":["pass","fail"]},"findings":{"type":"string"},"checks":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}]}`,
-		"plan":    `{"type":"object","required":["steps"],"properties":{"steps":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string"},"done":{"type":"boolean"}}}},"note":{"type":"string"}},"additionalProperties":false}`,
+		"accept-findings": `{"type":"object","required":["fingerprints"],"properties":{"fingerprints":{"type":"array","minItems":1,"maxItems":200,"items":{"type":"string","minLength":1,"maxLength":200}}},"additionalProperties":false}`,
+		"claim":           `{"type":"object","properties":{"agentId":{"type":"string"},"capacity":{"type":"object","properties":{"remainingTokens":{"type":"integer"},"windowTokens":{"type":"integer"},"resetAt":{"type":"string","format":"date-time"},"modelClass":{"type":"string"},"unknown":{"type":"boolean"}}}},"additionalProperties":false}`,
+		"execute":         `{"type":"object","required":["commandId"],"properties":{"commandId":{"type":"string","format":"uuid"}},"additionalProperties":false}`,
+		"verify":          `{"oneOf":[{"type":"object","required":["mode"],"properties":{"mode":{"const":"independent"}},"additionalProperties":false},{"type":"object","required":["verdict"],"properties":{"verdict":{"enum":["pass","fail"]},"findings":{"type":"string"},"checks":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}]}`,
+		"plan":            `{"type":"object","required":["steps"],"properties":{"steps":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string"},"done":{"type":"boolean"}}}},"note":{"type":"string"}},"additionalProperties":false}`,
 	}
-	examples := map[string]string{"claim": `{}`, "execute": `{"commandId":"11111111-1111-4111-8111-111111111111"}`, "verify": `{"mode":"independent"}`, "plan": `{"steps":[{"id":"s1","title":"Read the actual task evidence","done":false}]}`, "complete": `{"fenceToken":7,"usage":{"tokensIn":100,"tokensOut":20},"evidence":[]}`, "release": `{"fenceToken":7,"reason":"Actual handoff reason"}`, "resume": `{"resumeNote":"Continue the actual task"}`}
+	examples := map[string]string{"accept-findings": `{"fingerprints":["actual-finding-fingerprint"]}`, "claim": `{}`, "execute": `{"commandId":"11111111-1111-4111-8111-111111111111"}`, "verify": `{"mode":"independent"}`, "plan": `{"steps":[{"id":"s1","title":"Read the actual task evidence","done":false}]}`, "complete": `{"fenceToken":7,"usage":{"tokensIn":100,"tokensOut":20},"evidence":[]}`, "release": `{"fenceToken":7,"reason":"Actual handoff reason"}`, "resume": `{"resumeNote":"Continue the actual task"}`}
 	schema := schemas[action]
 	if schema == "" {
 		required := `["fenceToken"]`
@@ -165,13 +181,13 @@ func boardInputDescription(cmd *cobra.Command, action string) {
 }
 func newBoardCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) *cobra.Command {
 	root := &cobra.Command{Use: "board", Short: "Read and execute canonical scoped board tasks"}
-	names := []string{"status", "list", "task", "claim", "release", "plan", "execute", "latest", "availability", "verify", "complete", "resume", "execution", "evidence"}
+	names := []string{"findings", "accept-findings", "status", "list", "task", "claim", "release", "plan", "execute", "latest", "availability", "verify", "complete", "resume", "execution", "evidence"}
 	for _, name := range names {
 		action := name
-		read := action == "status" || action == "list" || action == "task" || action == "latest" || action == "availability" || action == "execution" || action == "evidence"
+		read := action == "findings" || action == "status" || action == "list" || action == "task" || action == "latest" || action == "availability" || action == "execution" || action == "evidence"
 		use := action + " <taskId>"
 		args := cobra.ExactArgs(1)
-		if action == "status" || action == "list" {
+		if action == "status" || action == "list" || action == "findings" || action == "accept-findings" {
 			use = action
 			args = cobra.NoArgs
 		}
@@ -249,6 +265,9 @@ func newBoardCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) *cobra
 			}
 			return nil
 		}
+		if action == "accept-findings" {
+			cmd.Example = "  passo --profile staging --project <actual-project> board accept-findings --input request.json\n  Request example: " + cmd.Annotations["inputExample"]
+		}
 		root.AddCommand(cmd)
 	}
 	return root
@@ -304,6 +323,33 @@ func (r *Runtime) boardExecutionRead(ctx context.Context, params map[string]stri
 // Verify any returned task identity before allowing mutation metadata to become
 // completed. Console execution receipts additionally bind caller command UUID.
 func validateBoardResponse(operation string, params map[string]string, input map[string]json.RawMessage, body json.RawMessage) error {
+	if operation == "board-rest:accept-findings" {
+		var requested []string
+		if json.Unmarshal(input["fingerprints"], &requested) != nil {
+			return &ExitError{30, "invalid_board_response"}
+		}
+		wanted := map[string]bool{}
+		for _, fp := range requested {
+			wanted[strings.TrimSpace(fp)] = true
+		}
+		var accepted struct {
+			Tasks []struct {
+				Fingerprint string `json:"fingerprint"`
+				TaskID      string `json:"taskId"`
+			} `json:"tasks"`
+		}
+		if json.Unmarshal(body, &accepted) != nil || len(accepted.Tasks) != len(wanted) {
+			return &ExitError{30, "invalid_board_response"}
+		}
+		seen := map[string]bool{}
+		for _, task := range accepted.Tasks {
+			if !wanted[task.Fingerprint] || seen[task.Fingerprint] || !boardOpaque.MatchString(task.TaskID) {
+				return &ExitError{30, "finding_task_scope_mismatch"}
+			}
+			seen[task.Fingerprint] = true
+		}
+		return nil
+	}
 	var response struct {
 		ID        string `json:"id"`
 		TaskID    string `json:"taskId"`
