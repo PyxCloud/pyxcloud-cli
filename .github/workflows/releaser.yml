@@ -12,7 +12,7 @@ permissions:
 jobs:
   portable:
     timeout-minutes: 15
-    runs-on: [self-hosted, pyxflow, linux-x64]
+    runs-on: ubicloud-standard-2
     steps:
       - uses: actions/checkout@v4
         with:
@@ -99,7 +99,7 @@ jobs:
     timeout-minutes: 15
     needs: [portable, native-macos]
     if: ${{ inputs.publish && startsWith(github.ref, 'refs/tags/v') }}
-    runs-on: [self-hosted, pyxflow, linux-x64]
+    runs-on: ubicloud-standard-2
     permissions:
       contents: write
     steps:
