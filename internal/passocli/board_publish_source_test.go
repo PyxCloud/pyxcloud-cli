@@ -26,7 +26,7 @@ func TestPublishSourceCanonicalRoute(t *testing.T) {
 func TestPublishSourceRejectsForeignOrIncompleteReceipt(t *testing.T) {
 	input := map[string]json.RawMessage{"versionLabel": json.RawMessage(`"r1-a7280bc"`)}
 	params := map[string]string{"projectId": "114", "taskId": "sec-real"}
-	good := map[string]any{"projectId": 114, "taskId": "sec-real", "versionId": "11111111-1111-4111-8111-111111111111", "versionLabel": "r1-a7280bc", "repository": "amemifra/pharos", "ref": "refs/heads/release/r1-a7280bc", "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "treeSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "pinRevision": 1, "pinReplayed": false, "publicationReplayed": false, "discoveryRunId": "22222222-2222-4222-8222-222222222222", "discoveryState": "queued"}
+	good := map[string]any{"projectId": 114, "taskId": "sec-real", "versionId": "11111111-1111-4111-8111-111111111111", "versionLabel": "r1-a7280bc", "repository": "amemifra/pharos", "ref": "refs/heads/passo/release/r1-a7280bc", "commitSha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "treeSha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "pinRevision": 1, "pinReplayed": false, "publicationReplayed": false, "discoveryRunId": "22222222-2222-4222-8222-222222222222", "discoveryState": "queued"}
 	for key, value := range map[string]any{"projectId": 115, "taskId": "foreign", "versionLabel": "r2-a7280bc", "versionId": "invalid", "commitSha": "bad", "treeSha": "bad", "pinRevision": 0, "discoveryRunId": "bad", "discoveryState": "invented", "pinReplayed": "false", "repository": "../foreign"} {
 		copy := map[string]any{}
 		for k, v := range good {
@@ -47,6 +47,17 @@ func TestPublishSourceRejectsForeignOrIncompleteReceipt(t *testing.T) {
 		b, _ := json.Marshal(copy)
 		if validateBoardResponse("board-rest:publish-source", params, input, b) == nil {
 			t.Errorf("accepted missing %s", key)
+		}
+	}
+	for _, ref := range []string{"refs/heads/main", "refs/heads/passo/release/r2-a7280bc", "refs/heads/foreign/release/r1-a7280bc"} {
+		copy := map[string]any{}
+		for k, v := range good {
+			copy[k] = v
+		}
+		copy["ref"] = ref
+		b, _ := json.Marshal(copy)
+		if validateBoardResponse("board-rest:publish-source", params, input, b) == nil {
+			t.Errorf("accepted foreign release ref %s", ref)
 		}
 	}
 	b, _ := json.Marshal(good)
@@ -71,7 +82,7 @@ func TestPublishSourceHTTPAndFailedCapture(t *testing.T) {
 				if state == "queued" {
 					w.WriteHeader(202)
 				}
-				fmt.Fprintf(w, `{"projectId":42,"taskId":"sec-real","versionId":"11111111-1111-4111-8111-111111111111","versionLabel":"r1-a7280bc","repository":"amemifra/pharos","ref":"refs/heads/release/r1-a7280bc","commitSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","treeSha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","pinRevision":1,"pinReplayed":false,"publicationReplayed":false,"discoveryRunId":"22222222-2222-4222-8222-222222222222","discoveryState":"%s"}`, state)
+				fmt.Fprintf(w, `{"projectId":42,"taskId":"sec-real","versionId":"11111111-1111-4111-8111-111111111111","versionLabel":"r1-a7280bc","repository":"amemifra/pharos","ref":"refs/heads/passo/release/r1-a7280bc","commitSha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","treeSha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","pinRevision":1,"pinReplayed":false,"publicationReplayed":false,"discoveryRunId":"22222222-2222-4222-8222-222222222222","discoveryState":"%s"}`, state)
 			}))
 			defer server.Close()
 			r := testRunner(t, server, t.TempDir())
