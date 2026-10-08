@@ -30,6 +30,9 @@ func cachedTokenAccess(store passoauth.Store, profile string, now func() time.Ti
 		}
 		if !loaded {
 			token, loadErr = loadTokenBeforeDeadline(ctx, store, profile)
+			if ctx.Err() != nil {
+				loadErr = passoauth.ContextPhase("credential_read", ctx.Err())
+			}
 			loaded = true
 		}
 		if loadErr != nil {
@@ -43,7 +46,13 @@ func cachedTokenAccess(store passoauth.Store, profile string, now func() time.Ti
 		}
 		fresh, err := refresh(ctx, token.RefreshToken)
 		if err != nil {
+			if ctx.Err() != nil {
+				return "", passoauth.ContextPhase("refresh", ctx.Err())
+			}
 			return "", err
+		}
+		if err := ctx.Err(); err != nil {
+			return "", passoauth.ContextPhase("refresh", err)
 		}
 		if err = store.Save(profile, fresh); err != nil {
 			loadErr = err

@@ -46,6 +46,7 @@ type Result struct {
 	Stage           string          `json:"stage,omitempty"`
 	Status          string          `json:"status,omitempty"`
 	Code            string          `json:"code,omitempty"`
+	FailurePhase    string          `json:"failurePhase,omitempty"`
 	ProjectID       int64           `json:"projectId,omitempty"`
 	VersionID       string          `json:"versionId,omitempty"`
 	VersionLabel    string          `json:"versionLabel,omitempty"`
@@ -268,7 +269,12 @@ func (r *Runtime) status(ctx context.Context) error {
 	defer cancel()
 	resp, err := r.Client.Do(ctx, http.MethodGet, fmt.Sprintf("/vibe/projects/%d/journey", r.ProjectID), nil, "")
 	if err != nil {
-		return classify(err)
+		classified := classify(err)
+		var phase *phaseExitError
+		if errors.As(classified, &phase) && phase.phase == "http_request" {
+			phase.phase = "status_http"
+		}
+		return classified
 	}
 	var envelope struct {
 		Data *struct {
@@ -382,7 +388,20 @@ func monitorContextError(err error) error {
 	}
 	return &ExitError{20, "deadline_exceeded"}
 }
+
+type phaseExitError struct {
+	err   error
+	phase string
+}
+
+func (e *phaseExitError) Error() string { return e.err.Error() }
+func (e *phaseExitError) Unwrap() error { return e.err }
+
 func classify(err error) error {
+	var phase *passoauth.PhaseError
+	if errors.As(err, &phase) {
+		return &phaseExitError{classify(phase.Cause), phase.Phase}
+	}
 	if errors.Is(err, passoauth.ErrCredentialStoreUnavailable) {
 		return &ExitError{10, "credential_store_unavailable"}
 	}

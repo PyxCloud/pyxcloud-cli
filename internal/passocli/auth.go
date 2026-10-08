@@ -83,7 +83,8 @@ func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Opt
 	}
 	code := ExitCode(err)
 	msg := err.Error()
-	if ee, ok := err.(*ExitError); ok {
+	var ee *ExitError
+	if errors.As(err, &ee) {
 		msg = ee.Code
 	}
 	jsonMode, _ := cmd.PersistentFlags().GetBool("json")
@@ -92,10 +93,14 @@ func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Opt
 		if errors.As(err, &emitted) {
 			return code
 		}
-		if _, ok := err.(*ExitError); !ok {
+		if !errors.As(err, &ee) {
 			msg = "command_failed"
 		}
 		result := Result{SchemaVersion: 1, Status: "error", Code: msg}
+		var phase *phaseExitError
+		if errors.As(err, &phase) {
+			result.FailurePhase = phase.phase
+		}
 		if msg == "credential_store_unavailable" {
 			result.NextAction = map[string]any{"key": "resolve_credential_store", "label": credentialStoreGuidance, "automaticRetry": false}
 		}
@@ -103,6 +108,10 @@ func execute(ctx context.Context, args []string, out, errOut io.Writer, opts Opt
 		return code
 	}
 	_, _ = fmt.Fprintln(errOut, msg)
+	var phase *phaseExitError
+	if errors.As(err, &phase) {
+		_, _ = fmt.Fprintln(errOut, "Failure phase: "+phase.phase)
+	}
 	if msg == "credential_store_unavailable" {
 		_, _ = fmt.Fprintln(errOut, credentialStoreGuidance)
 	}

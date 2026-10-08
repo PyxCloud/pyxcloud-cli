@@ -116,6 +116,10 @@ func (c *Client) DoWithIfMatch(ctx context.Context, method, path string, body js
 		token, tokenErr := c.AccessToken(ctx)
 		if tokenErr != nil {
 			if ctx.Err() != nil {
+				var phase *passoauth.PhaseError
+				if errors.As(tokenErr, &phase) {
+					return zero, phase
+				}
 				return zero, fmt.Errorf("authentication unavailable: %w", ctx.Err())
 			}
 			if errors.Is(tokenErr, passoauth.ErrCredentialStoreUnavailable) {
@@ -138,7 +142,7 @@ func (c *Client) DoWithIfMatch(ctx context.Context, method, path string, body js
 	resp, err := client.Do(req)
 	if err != nil {
 		if ctx.Err() != nil {
-			return zero, fmt.Errorf("request failed: %w", ctx.Err())
+			return zero, passoauth.ContextPhase("http_request", ctx.Err())
 		}
 		return zero, errors.New("request failed")
 	}
@@ -150,6 +154,9 @@ func (c *Client) DoWithIfMatch(ctx context.Context, method, path string, body js
 	responseID = sanitizeRequestID(responseID)
 	data, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes+1))
 	if err != nil {
+		if ctx.Err() != nil {
+			return zero, passoauth.ContextPhase("http_request", ctx.Err())
+		}
 		return zero, errors.New("request failed")
 	}
 	if len(data) > maxResponseBytes {

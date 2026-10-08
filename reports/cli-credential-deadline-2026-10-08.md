@@ -27,3 +27,13 @@ Missing final official artifact or check evidence: keep station pending. Credent
 | Local patched executable counts as official | Wait for reviewed official release artifact |
 
 Acceptance: all three commands in step 3 PASS on the edited source. The passocli selection ran with race detector; passoauth native human fixture remains opt-in and was not run. Accepted output is one source fix, pending independent review and official release. No live journey acceptance is claimed.
+
+## Closed phase followup
+
+The single official artifact attempt (run 37850888918, merge 17c8fd86) returned code timeout after 20.876 seconds, stdout 54 bytes, stderr zero, without watchdog termination. It supplied no component phase, so underlying cause remains UNKNOWN.
+
+An additive `failurePhase` now preserves only credential_read, refresh, or status_http for the status command (generic transport uses http_request). Timeout/canceled codes and exit codes remain unchanged. JSON and human output contain no native message, path, URL, body or credential. Cancellation before a refreshed token is saved prevents late refresh side effects.
+
+A race-enabled package check uncovered an existing test-fixture race in TestRunDoesNotTrustLedgerWhenBackendCheckIsFalse: HTTP handler counters were read by the test while the final timed-out handler could still write. Those counters now use atomics. The new HTTP fixture initially lacked staging endpoint configuration; using sandbox with an in-memory transport corrected the setup. Neither failure was deliberately introduced as a RED gate.
+
+No further live credential or status attempt belongs to this source station. Repeat only after independent review and a new official CI artifact.

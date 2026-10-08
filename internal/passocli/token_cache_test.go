@@ -133,6 +133,10 @@ func TestTokenCacheHonorsDeadlineDuringCredentialRead(t *testing.T) {
 	cancel()
 	select {
 	case err := <-done:
+		var phase *passoauth.PhaseError
+		if !errors.As(err, &phase) || phase.Phase != "credential_read" {
+			t.Fatalf("missing credential read phase: %v", err)
+		}
 		if !errors.Is(err, context.Canceled) {
 			t.Fatalf("got %v", err)
 		}
