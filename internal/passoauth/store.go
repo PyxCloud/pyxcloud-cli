@@ -8,6 +8,10 @@ import (
 	"time"
 )
 
+// ErrCredentialStoreUnavailable reports a failed native store operation without
+// carrying native messages, credentials or an assumption about token expiry.
+var ErrCredentialStoreUnavailable = errors.New("credential store unavailable")
+
 // Token is an OAuth token set held by the local credential store.
 type Token struct {
 	AccessToken  string    `json:"access_token"`
@@ -42,7 +46,7 @@ func (s *keychainStore) Load(profile string) (Token, error) {
 	}
 	out, err := s.nativeLoad("passo-cli/"+profile, "oauth")
 	if err != nil {
-		return Token{}, errors.New("could not load credentials from Keychain")
+		return Token{}, ErrCredentialStoreUnavailable
 	}
 	var token Token
 	if err := json.Unmarshal(out, &token); err != nil {
@@ -64,7 +68,7 @@ func (s *keychainStore) Save(profile string, token Token) error {
 	}
 	err = s.nativeSave("passo-cli/"+profile, "oauth", data)
 	if err != nil {
-		return errors.New("could not save credentials to Keychain")
+		return ErrCredentialStoreUnavailable
 	}
 	return nil
 }
@@ -78,7 +82,7 @@ func (s *keychainStore) Delete(profile string) error {
 	}
 	err := s.nativeDelete("passo-cli/"+profile, "oauth")
 	if err != nil {
-		return errors.New("could not delete credentials from Keychain")
+		return ErrCredentialStoreUnavailable
 	}
 	return nil
 }

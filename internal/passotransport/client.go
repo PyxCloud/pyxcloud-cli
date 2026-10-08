@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pyxcloud/pyxcloud-cli/internal/passoauth"
 )
 
 const maxResponseBytes = 2 << 20
@@ -115,6 +117,9 @@ func (c *Client) DoWithIfMatch(ctx context.Context, method, path string, body js
 		if tokenErr != nil {
 			if ctx.Err() != nil {
 				return zero, fmt.Errorf("authentication unavailable: %w", ctx.Err())
+			}
+			if errors.Is(tokenErr, passoauth.ErrCredentialStoreUnavailable) {
+				return zero, passoauth.ErrCredentialStoreUnavailable
 			}
 			return zero, errors.New("authentication unavailable")
 		}

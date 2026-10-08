@@ -383,6 +383,9 @@ func monitorContextError(err error) error {
 	return &ExitError{20, "deadline_exceeded"}
 }
 func classify(err error) error {
+	if errors.Is(err, passoauth.ErrCredentialStoreUnavailable) {
+		return &ExitError{10, "credential_store_unavailable"}
+	}
 	var api *passotransport.APIError
 	if errors.As(err, &api) {
 		c := api.Code

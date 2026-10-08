@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"github.com/pyxcloud/pyxcloud-cli/internal/passoauth"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -202,5 +204,17 @@ func TestDoWithIfMatchRejectsNegativeBeforeTokenOrNetwork(t *testing.T) {
 	}
 	if calls != 0 || tokens != 0 {
 		t.Fatalf("request/token calls=%d/%d", calls, tokens)
+	}
+}
+
+func TestCredentialStoreFailurePreservesOnlySafeRecoveryType(t *testing.T) {
+	hit := false
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { hit = true }))
+	defer server.Close()
+	_, err := New(server.URL, func(context.Context) (string, error) {
+		return "private-access", fmt.Errorf("private-native-error: %w", passoauth.ErrCredentialStoreUnavailable)
+	}).Do(context.Background(), http.MethodGet, "/", nil, "")
+	if hit || !errors.Is(err, passoauth.ErrCredentialStoreUnavailable) || err.Error() != "credential store unavailable" {
+		t.Fatalf("unsafe or lost recovery: %v request=%v", err, hit)
 	}
 }
