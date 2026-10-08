@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -298,15 +299,15 @@ func TestRunRejectsLiteralBranchLabelOutsideRuntimeScope(t *testing.T) {
 }
 
 func TestRunDoesNotTrustLedgerWhenBackendCheckIsFalse(t *testing.T) {
-	gets, posts := 0, 0
+	var gets, posts atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
-			gets++
+			gets.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = w.Write([]byte(`{"data":{"status":"working"}}`))
 			return
 		}
-		posts++
+		posts.Add(1)
 		w.WriteHeader(http.StatusAccepted)
 		_, _ = w.Write([]byte(`{"accepted":true}`))
 	}))
@@ -316,8 +317,8 @@ func TestRunDoesNotTrustLedgerWhenBackendCheckIsFalse(t *testing.T) {
 	plan := `{"schemaVersion":1,"steps":[{"stage":"connect","operation":"projects:canonicalProjectTransition","params":{"projectId":"${projectId}"},"query":{},"input":{"to":"ready"},"bodyIdempotency":true,"check":{"operation":"projects:canonicalProjectStateRead","params":{"projectId":"${projectId}"},"query":{},"pointer":"/data/status","equals":"ready"}}]}`
 	err := executeRunPlan(t, plan, "connect", r, out)
 	var exit *ExitError
-	if !errors.As(err, &exit) || exit.Code != "run_timeout" || posts != 1 || gets < 1 {
-		t.Fatalf("err=%v GETs=%d POSTs=%d", err, gets, posts)
+	if !errors.As(err, &exit) || exit.Code != "run_timeout" || posts.Load() != 1 || gets.Load() < 1 {
+		t.Fatalf("err=%v GETs=%d POSTs=%d", err, gets.Load(), posts.Load())
 	}
 }
 
