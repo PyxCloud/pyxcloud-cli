@@ -12,7 +12,7 @@ legacy `pyxcloud board` MCP command.
 ```sh
 python3 scripts/test_native_cli_release.py
 goreleaser check
-actionlint -shellcheck='' -ignore 'label "(pyxflow|linux-x64)" is unknown' .github/workflows/releaser.yml
+actionlint -shellcheck='' -ignore 'label "ubicloud-standard-2" is unknown' .github/workflows/releaser.yml
 bash -n scripts/build-native-cli.sh
 bash -n scripts/install.sh
 ```
