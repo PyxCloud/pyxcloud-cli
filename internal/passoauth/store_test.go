@@ -40,6 +40,20 @@ func TestKeychainStoreSaveLoadDelete(t *testing.T) {
 		}
 		return nil, errors.New("unexpected command")
 	}
+	s.inputRunner = func(_ context.Context, input []byte, _ string, args ...string) ([]byte, error) {
+		service := ""
+		for i, a := range args {
+			if a == "-s" {
+				service = args[i+1]
+			}
+		}
+		lines := strings.Split(string(input), "\n")
+		if len(lines) != 3 || lines[0] != lines[1] {
+			t.Fatal("invalid password prompt input")
+		}
+		data[service] = []byte(lines[0])
+		return nil, nil
+	}
 	want := Token{AccessToken: "access-secret", RefreshToken: "refresh-secret", ExpiresAt: time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)}
 	if err := s.Save("sandbox", want); err != nil {
 		t.Fatal(err)
@@ -77,11 +91,39 @@ func TestKeychainStoreDoesNotLeakCredentialInErrors(t *testing.T) {
 	s.platform = "darwin"
 	secret := "do-not-print-this-token"
 	s.runner = func(context.Context, string, ...string) ([]byte, error) { return []byte(secret), errors.New(secret) }
+	s.inputRunner = func(context.Context, []byte, string, ...string) ([]byte, error) {
+		return []byte(secret), errors.New(secret)
+	}
 	err := s.Save("sandbox", Token{AccessToken: secret})
 	if err == nil {
 		t.Fatal("expected command failure")
 	}
 	if strings.Contains(err.Error(), secret) {
 		t.Fatalf("error leaked token: %v", err)
+	}
+}
+
+func TestKeychainSaveNeverPassesTokenAsArgument(t *testing.T) {
+	s := NewKeychainStore().(*keychainStore)
+	s.platform = "darwin"
+	s.runner = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		for _, a := range args {
+			if strings.Contains(a, "private-access") || strings.Contains(a, "private-refresh") {
+				t.Fatal("credential passed as argument")
+			}
+		}
+		return nil, nil
+	}
+	s.inputRunner = func(ctx context.Context, input []byte, name string, args ...string) ([]byte, error) {
+		if !strings.Contains(string(input), "private-access") || !strings.Contains(string(input), "private-refresh") {
+			t.Fatal("missing private stdin")
+		}
+		if args[len(args)-1] != "-w" {
+			t.Fatal("password prompt option must be last")
+		}
+		return s.runner(ctx, name, args...)
+	}
+	if err := s.Save("sandbox", Token{AccessToken: "private-access", RefreshToken: "private-refresh"}); err != nil {
+		t.Fatal(err)
 	}
 }
