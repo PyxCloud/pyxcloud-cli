@@ -1,0 +1,6 @@
+# oapi-codegen config for api/contracts/vibe-docs-boardos.openapi.json. Regenerate: go generate ./internal/api/gen/...
+package: vibedocsboardos
+generate:
+  models: true
+  client: true
+output: vibedocsboardos.gen.go

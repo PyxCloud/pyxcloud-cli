@@ -1,0 +1,966 @@
+{
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "properties": {
+          "error": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Compilation": {
+        "properties": {
+          "compilationId": {
+            "type": "string"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/Component"
+            },
+            "type": "array"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "inputHash": {
+            "type": "string"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "provenance": {
+            "items": {
+              "$ref": "#/components/schemas/ProvenanceEdge"
+            },
+            "type": "array"
+          },
+          "requirements": {
+            "items": {
+              "$ref": "#/components/schemas/Requirement"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "$ref": "#/components/schemas/CompilationSource"
+            },
+            "type": "array"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "trace": {
+            "items": {
+              "$ref": "#/components/schemas/TraceLink"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "CompilationSource": {
+        "properties": {
+          "assessmentRevision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "documentId": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "repositoryEvidenceRef": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Component": {
+        "properties": {
+          "deltaStatus": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "nodeKey": {
+            "type": "string"
+          },
+          "nodeType": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "properties": {
+            "type": "object"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ComponentDiff": {
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/Component"
+          },
+          "before": {
+            "$ref": "#/components/schemas/Component"
+          }
+        },
+        "type": "object"
+      },
+      "Decision": {
+        "properties": {
+          "body": {
+            "type": "object"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "createdBy": {
+            "type": "string"
+          },
+          "decisionId": {
+            "type": "string"
+          },
+          "idempotencyKey": {
+            "type": "string"
+          },
+          "organisationId": {
+            "type": "string"
+          },
+          "projectId": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "revision": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "sequence": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "PaymentRequired": {
+        "properties": {
+          "error": {
+            "const": "payment_required",
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "subscribeUrl": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "ProvenanceEdge": {
+        "properties": {
+          "derivedRef": {
+            "type": "string"
+          },
+          "edgeKind": {
+            "type": "string"
+          },
+          "sourceRef": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RepositoryEvidence": {
+        "properties": {
+          "capabilityId": {
+            "type": "string"
+          },
+          "dependencies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": {
+            "type": "string"
+          },
+          "evidenceRefs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "gapStatus": {
+            "type": "string"
+          },
+          "method": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Requirement": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "sourceDoc": {
+            "type": "string"
+          },
+          "sourceLine": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "text": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "RequirementDiff": {
+        "properties": {
+          "after": {
+            "$ref": "#/components/schemas/Requirement"
+          },
+          "before": {
+            "$ref": "#/components/schemas/Requirement"
+          }
+        },
+        "type": "object"
+      },
+      "RevisionDiff": {
+        "properties": {
+          "addedComponents": {
+            "items": {
+              "$ref": "#/components/schemas/Component"
+            },
+            "type": "array"
+          },
+          "addedRequirements": {
+            "items": {
+              "$ref": "#/components/schemas/Requirement"
+            },
+            "type": "array"
+          },
+          "changedComponents": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentDiff"
+            },
+            "type": "array"
+          },
+          "changedRequirements": {
+            "items": {
+              "$ref": "#/components/schemas/RequirementDiff"
+            },
+            "type": "array"
+          },
+          "removedComponents": {
+            "items": {
+              "$ref": "#/components/schemas/Component"
+            },
+            "type": "array"
+          },
+          "removedRequirements": {
+            "items": {
+              "$ref": "#/components/schemas/Requirement"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "TraceLink": {
+        "properties": {
+          "compilationId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "overridden": {
+            "type": "boolean"
+          },
+          "overriddenAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "overriddenBy": {
+            "type": "string"
+          },
+          "overrideReason": {
+            "type": "string"
+          },
+          "sourceRef": {
+            "type": "string"
+          },
+          "targetRef": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "REST face of the canonical document-compilation service (BE-DOCS-02). MCP parity: the passobuild_docs_* tools expose the same operations over the same service instance.",
+    "title": "passo.build document compilation API",
+    "version": "0.2.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/vibe/projects/{id}/decisions": {
+      "get": {
+        "operationId": "listDecisions",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "decisions": {
+                      "items": {
+                        "$ref": "#/components/schemas/Decision"
+                      },
+                      "type": "array"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "All decision revisions, sequence-ordered (honest empty list when none)"
+      },
+      "post": {
+        "operationId": "createDecision",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "body": {
+                    "type": "object"
+                  },
+                  "idempotencyKey": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "title"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Record an architecture decision (append-only, idempotent by key)"
+      }
+    },
+    "/vibe/projects/{id}/decisions/{decisionId}/transition": {
+      "post": {
+        "operationId": "transitionDecision",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "decisionId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "body": {
+                    "type": "object"
+                  },
+                  "idempotencyKey": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "title": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "idempotencyKey",
+                  "status"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Decision"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Append the next revision of an existing decision (history is never rewritten)"
+      }
+    },
+    "/vibe/projects/{id}/document-compilations": {
+      "get": {
+        "operationId": "listDocumentCompilations",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "revisions": {
+                      "items": {
+                        "$ref": "#/components/schemas/Compilation"
+                      },
+                      "type": "array"
+                    },
+                    "total": {
+                      "type": "integer"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "List compilation revisions (honest empty list when none)"
+      },
+      "post": {
+        "operationId": "compileDocumentation",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "description": "At least one of documentIds / assessmentRevision / repositoryEvidence is required (400 otherwise — nothing is ever fabricated).",
+                "properties": {
+                  "assessmentRevision": {
+                    "description": "must match the project's current scope-assessment revision",
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "documentIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "idempotencyKey": {
+                    "description": "caller-chosen; replaying it returns the existing revision (200), never a duplicate",
+                    "type": "string"
+                  },
+                  "repositoryEvidence": {
+                    "items": {
+                      "$ref": "#/components/schemas/RepositoryEvidence"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "idempotencyKey"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Compilation"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Compile a Living Documentation revision (idempotent by key)"
+      }
+    },
+    "/vibe/projects/{id}/document-compilations/diff": {
+      "get": {
+        "operationId": "diffDocumentCompilations",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "to",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevisionDiff"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Diff two compilation revisions"
+      }
+    },
+    "/vibe/projects/{id}/document-compilations/{revision}": {
+      "get": {
+        "operationId": "getDocumentCompilation",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Compilation"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "One compilation revision with sources, requirements, components, provenance and trace"
+      }
+    },
+    "/vibe/projects/{id}/document-compilations/{revision}/export/{kind}": {
+      "get": {
+        "operationId": "exportDocumentCompilation",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "kind",
+            "required": true,
+            "schema": {
+              "enum": [
+                "docx",
+                "openapi"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "artifact content (application/vnd.openxmlformats-officedocument.wordprocessingml.document or application/json)"
+          },
+          "402": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentRequired"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Export the Master Book DOCX or OpenAPI 3.1 JSON (ENTITLEMENT-GATED: 402 without an active plan)"
+      }
+    },
+    "/vibe/projects/{id}/document-compilations/{revision}/trace-override": {
+      "post": {
+        "operationId": "overrideTraceLink",
+        "parameters": [
+          {
+            "description": "project id (must belong to the caller's organisation; 404 otherwise)",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "format": "int64",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "reason": {
+                    "type": "string"
+                  },
+                  "sourceRef": {
+                    "type": "string"
+                  },
+                  "targetRef": {
+                    "type": "string"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sourceRef",
+                  "targetRef"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TraceLink"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Record a human trace-link decision (survives recompilation)"
+      }
+    }
+  }
+}

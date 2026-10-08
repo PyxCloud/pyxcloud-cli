@@ -1,0 +1,358 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "passo.build SpecOps project-state transitions API",
+    "description": "The canonical 6+1 event-sourced project state machine (CONNECT, BUILD, SECURE, DESIGN, COMPARE, DEPLOY, OPERATE macros). Mounted at engine.Group(\"/projects\") in go/internal/di/projectstate_routes.go:115, handlers in go/internal/projectstate/http.go:236-255. The SpecOps CONNECT flow rides this surface: the client fires POST /projects/{projectId}/transitions with event repo.connect.requested (go/internal/projectstate/state.go:98); repo.connected is stamped server-side once the connection is real (go/internal/projectstate/machine.go:2340). Post-execution macros (SECURE, DESIGN, COMPARE, DEPLOY) are server-owned: a client post is refused 409 server_owned_transition (go/internal/projectstate/server_owned.go).",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/projects/{projectId}/transitions": {
+      "post": {
+        "operationId": "postProjectTransition",
+        "summary": "Apply one state-transition event to the canonical machine (the CONNECT flow starts here with repo.connect.requested)",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransitionRequest"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "description": "project id (org-scoped server-side; foreign projects are indistinguishable from missing)",
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TransitionApplied"
+                }
+              }
+            },
+            "description": "the event was applied; the new snapshot is returned"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "invalid_request_body (go/internal/projectstate/http.go:388)"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/IllegalTransitionError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NamedReasonError"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "illegal_transition (with availableTransitions), concurrent_modification, guard_rejected, scope_assessment_retired, or server_owned_transition"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "project not found / foreign organisation"
+          }
+        }
+      }
+    },
+    "/projects/{projectId}/state": {
+      "get": {
+        "operationId": "getProjectState",
+        "summary": "Read the materialised current state plus a page of the append-only event log",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "projectId",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectStateRead"
+                }
+              }
+            },
+            "description": "the current snapshot, the event page and secondTouch"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            },
+            "description": "project not found / foreign organisation"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ApiError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "description": "stable typed error code",
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "detail": {
+            "description": "structured detail (gin.H), shape varies by code",
+            "type": "object",
+            "additionalProperties": true
+          }
+        }
+      },
+      "NamedReasonError": {
+        "description": "the flat error body the handler aborts with (go/internal/projectstate/http.go:430-491): server_owned_transition, concurrent_modification, guard_rejected {error, reason, event, from}, scope_assessment_retired {error, reason, hint}",
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "event": {
+            "type": "string"
+          },
+          "from": {
+            "type": "string"
+          },
+          "hint": {
+            "type": "string"
+          }
+        },
+        "required": ["error", "reason"]
+      },
+      "IllegalTransitionError": {
+        "description": "409 body of an illegal event (go/internal/projectstate/http.go:439-451)",
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": ["illegal_transition"]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "availableTransitions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AvailableTransition"
+            }
+          }
+        }
+      },
+      "AvailableTransition": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string"
+          },
+          "from": {
+            "description": "canonical MACRO.MICRO string (projectstate.State.String, state.go:76-83)",
+            "type": "string"
+          },
+          "to": {
+            "type": "string"
+          }
+        }
+      },
+      "TransitionRequest": {
+        "description": "the anonymous request body of Handler.PostTransition (go/internal/projectstate/http.go:383-386): event is required, payload is merged into project_state.data with reserved keys stripped (StripReservedStateKeys)",
+        "type": "object",
+        "properties": {
+          "event": {
+            "description": "an EventType name from go/internal/projectstate/state.go:94-230. The client-postable set excludes the server-owned events (server_owned.go): CONNECT/BUILD events (project.created, repo.connect.requested, repo.connected-adjacent client edges, scope.*, gaps.*, task.*, plan.confirmed, tasks.completed) plus the always-client-postable self-loops (navigated.back, repo.detached, repo.replaced, repo.credentials.rotated, service.visibility.live, service.visibility.hidden, display.preferences.set, scope.assessment.started)",
+            "type": "string"
+          },
+          "payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "version": {
+            "description": "optimistic-concurrency version of the state the caller read",
+            "type": "integer",
+            "format": "int64"
+          }
+        },
+        "required": ["event"]
+      },
+      "TransitionApplied": {
+        "description": "the 200 body of POST /projects/{projectId}/transitions (go/internal/projectstate/http.go:487-495)",
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "macro": {
+            "description": "one of CONNECT, BUILD, SECURE, DESIGN, COMPARE, DEPLOY, OPERATE (state.go:13-19)",
+            "type": "string"
+          },
+          "micro": {
+            "description": "the micro state under the macro (state.go:26-59)",
+            "type": "string"
+          },
+          "state": {
+            "description": "canonical MACRO.MICRO string",
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["projectId", "macro", "micro", "state", "version", "updatedAt"]
+      },
+      "ProjectStateEvent": {
+        "description": "one append-only project_state_event entry (projectstate.Event, go/internal/projectstate/state.go:259-276). The struct carries no json tags, so Go serialises the Go field names verbatim (EventID, ProjectID, Type, Actor, Payload, Version, Ts, VersionID)",
+        "type": "object",
+        "properties": {
+          "EventID": {
+            "type": "string"
+          },
+          "ProjectID": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "Type": {
+            "type": "string"
+          },
+          "Actor": {
+            "type": "string"
+          },
+          "Payload": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "Version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "Ts": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "VersionID": {
+            "description": "version-graph node the event was applied at; empty for pre-tracking events",
+            "type": "string"
+          }
+        }
+      },
+      "ProjectStateRead": {
+        "description": "the 200 body of GET /projects/{projectId}/state (go/internal/projectstate/http.go:360-370)",
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "macro": {
+            "type": "string"
+          },
+          "micro": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "version": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectStateEvent"
+            }
+          },
+          "limit": {
+            "type": "integer"
+          },
+          "offset": {
+            "type": "integer"
+          },
+          "total": {
+            "type": "integer"
+          },
+          "secondTouch": {
+            "description": "server-computed has-ever-deployed (second_touch.go / HasEverDeployed, http.go:350-356) — the FE reads this instead of re-deriving it from macro/micro",
+            "type": "boolean"
+          }
+        },
+        "required": ["projectId", "macro", "micro", "state", "version", "updatedAt", "events", "limit", "offset", "total", "secondTouch"]
+      }
+    }
+  }
+}
