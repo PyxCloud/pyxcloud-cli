@@ -47,6 +47,7 @@ type boardFinish struct {
 	Evidence   []boardEvidence `json:"evidence,omitempty"`
 }
 type boardVerify struct {
+	Mode     string   `json:"mode,omitempty"`
 	Verdict  string   `json:"verdict"`
 	Findings string   `json:"findings,omitempty"`
 	Checks   []string `json:"checks,omitempty"`
@@ -95,6 +96,13 @@ func strictBoardInput(action string, b json.RawMessage) error {
 			return fail()
 		}
 	case *boardVerify:
+		if v.Mode != "" {
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(b, &fields) != nil || v.Mode != "independent" || len(fields) != 1 {
+				return fail()
+			}
+			break
+		}
 		if !strings.EqualFold(v.Verdict, "pass") && !strings.EqualFold(v.Verdict, "fail") {
 			return fail()
 		}
@@ -136,10 +144,10 @@ func boardInputDescription(cmd *cobra.Command, action string) {
 	schemas := map[string]string{
 		"claim":   `{"type":"object","properties":{"agentId":{"type":"string"},"capacity":{"type":"object","properties":{"remainingTokens":{"type":"integer"},"windowTokens":{"type":"integer"},"resetAt":{"type":"string","format":"date-time"},"modelClass":{"type":"string"},"unknown":{"type":"boolean"}}}},"additionalProperties":false}`,
 		"execute": `{"type":"object","required":["commandId"],"properties":{"commandId":{"type":"string","format":"uuid"}},"additionalProperties":false}`,
-		"verify":  `{"type":"object","required":["verdict"],"properties":{"verdict":{"enum":["pass","fail"]},"findings":{"type":"string"},"checks":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}`,
+		"verify":  `{"oneOf":[{"type":"object","required":["mode"],"properties":{"mode":{"const":"independent"}},"additionalProperties":false},{"type":"object","required":["verdict"],"properties":{"verdict":{"enum":["pass","fail"]},"findings":{"type":"string"},"checks":{"type":"array","items":{"type":"string"}}},"additionalProperties":false}]}`,
 		"plan":    `{"type":"object","required":["steps"],"properties":{"steps":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"title":{"type":"string"},"done":{"type":"boolean"}}}},"note":{"type":"string"}},"additionalProperties":false}`,
 	}
-	examples := map[string]string{"claim": `{}`, "execute": `{"commandId":"11111111-1111-4111-8111-111111111111"}`, "verify": `{"verdict":"fail","findings":"Describe actual independent findings","checks":[]}`, "plan": `{"steps":[{"id":"s1","title":"Read the actual task evidence","done":false}]}`, "complete": `{"fenceToken":7,"usage":{"tokensIn":100,"tokensOut":20},"evidence":[]}`, "release": `{"fenceToken":7,"reason":"Actual handoff reason"}`, "resume": `{"resumeNote":"Continue the actual task"}`}
+	examples := map[string]string{"claim": `{}`, "execute": `{"commandId":"11111111-1111-4111-8111-111111111111"}`, "verify": `{"mode":"independent"}`, "plan": `{"steps":[{"id":"s1","title":"Read the actual task evidence","done":false}]}`, "complete": `{"fenceToken":7,"usage":{"tokensIn":100,"tokensOut":20},"evidence":[]}`, "release": `{"fenceToken":7,"reason":"Actual handoff reason"}`, "resume": `{"resumeNote":"Continue the actual task"}`}
 	schema := schemas[action]
 	if schema == "" {
 		required := `["fenceToken"]`

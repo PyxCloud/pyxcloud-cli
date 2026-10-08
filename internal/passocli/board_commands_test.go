@@ -203,3 +203,34 @@ func TestBoardEvidenceUsesScopedReadAndRefusalIsNotSuccess(t *testing.T) {
 		t.Fatal("refused read was successful")
 	}
 }
+
+func TestBoardVerifyIndependentUsesExactServerReviewBody(t *testing.T) {
+	for _, input := range []string{`{"mode":"independent"}`, `{"mode":"independent","verdict":"pass"}`, `{"mode":"independent","checks":[]}`, `{"mode":"independent","findings":""}`, `{"mode":"unknown"}`} {
+		t.Run(input, func(t *testing.T) {
+			calls := 0
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, q *http.Request) {
+				calls++
+				if q.Method != "POST" || q.URL.Path != "/vibe/projects/42/board/tasks/task-1/verify" {
+					t.Error(q.URL.Path)
+				}
+				b, _ := io.ReadAll(q.Body)
+				if string(b) != `{"mode":"independent"}` {
+					t.Errorf("body %s", b)
+				}
+				io.WriteString(w, `{"taskId":"task-1","verdict":"pass","recorded":true,"verifiedBy":"server-reviewer"}`)
+			}))
+			defer s.Close()
+			r := testRunner(t, s, t.TempDir())
+			root := boardRoot(t, r, input)
+			root.SetArgs([]string{"board", "verify", "task-1", "--input", "-"})
+			err := root.Execute()
+			if input == `{"mode":"independent"}` {
+				if err != nil || calls != 1 {
+					t.Fatalf("err=%v calls=%d", err, calls)
+				}
+			} else if err == nil || calls != 0 {
+				t.Fatalf("unsafe input reached server err=%v calls=%d", err, calls)
+			}
+		})
+	}
+}
