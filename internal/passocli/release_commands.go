@@ -166,6 +166,7 @@ func newReleaseCommands(makeRuntime func(*cobra.Command) (*Runtime, error)) []*c
 			return performRead(cmd, "security", item.op, true, nil)
 		}})
 	}
+	secure.AddCommand(newScanBaselineCommand(makeRuntime))
 	secure.AddCommand(&cobra.Command{Use: "finding <id>", Short: "Read security finding details", Args: cobra.ExactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		if strings.TrimSpace(args[0]) == "" {
 			return &ExitError{20, "invalid_finding_id"}
