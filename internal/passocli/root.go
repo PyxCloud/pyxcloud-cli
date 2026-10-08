@@ -402,6 +402,9 @@ func classify(err error) error {
 	if errors.As(err, &phase) {
 		return &phaseExitError{classify(phase.Cause), phase.Phase}
 	}
+	if errors.Is(err, passoauth.ErrCredentialAccessRequired) {
+		return &ExitError{10, "credential_access_required"}
+	}
 	if errors.Is(err, passoauth.ErrCredentialStoreUnavailable) {
 		return &ExitError{10, "credential_store_unavailable"}
 	}

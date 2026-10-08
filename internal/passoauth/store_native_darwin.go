@@ -18,8 +18,35 @@ static OSStatus passoSave(const char *service, UInt32 serviceLen, const char *ac
     CFRelease(item);
     return status;
 }
-static OSStatus passoLoad(const char *service, UInt32 serviceLen, const char *account, UInt32 accountLen, void **data, UInt32 *dataLen) {
-    return SecKeychainFindGenericPassword(NULL, serviceLen, service, accountLen, account, dataLen, data, NULL);
+// The query targets the existing file-based generic-password record. Do not set
+// kSecUseDataProtectionKeychain or change process-wide interaction policy.
+static OSStatus passoLoad(const char *service, UInt32 serviceLen, const char *account, UInt32 accountLen, CFDataRef *data) {
+    CFStringRef svc = CFStringCreateWithBytes(NULL, (const UInt8 *)service, serviceLen, kCFStringEncodingUTF8, false);
+    CFStringRef acct = CFStringCreateWithBytes(NULL, (const UInt8 *)account, accountLen, kCFStringEncodingUTF8, false);
+    if (!svc || !acct) {
+        if (svc) CFRelease(svc);
+        if (acct) CFRelease(acct);
+        return errSecAllocate;
+    }
+    const void *keys[] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecReturnData, kSecMatchLimit, kSecUseAuthenticationUI};
+    const void *values[] = {kSecClassGenericPassword, svc, acct, kCFBooleanTrue, kSecMatchLimitOne, kSecUseAuthenticationUIFail};
+    CFDictionaryRef query = CFDictionaryCreate(NULL, keys, values, 6, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFRelease(svc);
+    CFRelease(acct);
+    if (!query) return errSecAllocate;
+    CFTypeRef result = NULL;
+    OSStatus status = SecItemCopyMatching(query, &result);
+    CFRelease(query);
+    if (status != errSecSuccess) {
+        if (result) CFRelease(result);
+        return status;
+    }
+    if (!result || CFGetTypeID(result) != CFDataGetTypeID()) {
+        if (result) CFRelease(result);
+        return errSecInternalComponent;
+    }
+    *data = (CFDataRef)result;
+    return errSecSuccess;
 }
 static OSStatus passoDelete(const char *service, UInt32 serviceLen, const char *account, UInt32 accountLen) {
     SecKeychainItemRef item = NULL;
@@ -61,17 +88,20 @@ func nativeKeychainLoad(service, account string) ([]byte, error) {
 	defer C.free(unsafe.Pointer(svc))
 	acct := C.CString(account)
 	defer C.free(unsafe.Pointer(acct))
-	var payload unsafe.Pointer
-	var length C.UInt32
-	status := C.passoLoad(svc, C.UInt32(len(service)), acct, C.UInt32(len(account)), &payload, &length)
+	var payload C.CFDataRef
+	status := C.passoLoad(svc, C.UInt32(len(service)), acct, C.UInt32(len(account)), &payload)
+	if status == C.errSecInteractionNotAllowed {
+		return nil, ErrCredentialAccessRequired
+	}
 	if status != C.errSecSuccess {
 		return nil, errors.New("could not load credentials from Keychain")
 	}
-	defer C.SecKeychainItemFreeContent(nil, payload)
-	if length > 1024*1024 {
+	defer C.CFRelease(C.CFTypeRef(payload))
+	length := C.CFDataGetLength(payload)
+	if length < 0 || length > 1024*1024 {
 		return nil, errors.New("invalid credential size")
 	}
-	return C.GoBytes(payload, C.int(length)), nil
+	return C.GoBytes(unsafe.Pointer(C.CFDataGetBytePtr(payload)), C.int(length)), nil
 }
 func nativeKeychainDelete(service, account string) error {
 	svc := C.CString(service)
