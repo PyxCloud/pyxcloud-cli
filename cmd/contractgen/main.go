@@ -20,8 +20,9 @@ type doc struct {
 	} `json:"components"`
 }
 type operation struct {
-	OperationID string      `json:"operationId"`
-	Parameters  []parameter `json:"parameters"`
+	OperationID string          `json:"operationId"`
+	RequestBody json.RawMessage `json:"requestBody"`
+	Parameters  []parameter     `json:"parameters"`
 }
 type parameter struct {
 	Ref      string `json:"$ref"`
@@ -44,6 +45,7 @@ type schema struct {
 }
 type opEntry struct {
 	Key, Contract, ID, Method, Path string
+	Body                            json.RawMessage
 	Params                          []string
 }
 
@@ -120,7 +122,7 @@ func run(check bool) error {
 					}
 				}
 				sort.Strings(params)
-				entries = append(entries, opEntry{key, stem, o.OperationID, strings.ToUpper(m), p, params})
+				entries = append(entries, opEntry{Key: key, Contract: stem, ID: o.OperationID, Method: strings.ToUpper(m), Path: p, Params: params, Body: o.RequestBody})
 			}
 		}
 	}
@@ -249,6 +251,16 @@ func generateOps(entries []opEntry) ([]byte, error) {
 	for _, e := range entries {
 		if len(e.Params) > 0 {
 			fmt.Fprintf(&b, "%q: {%s},\n", e.Key, quoted(e.Params))
+		}
+	}
+	b.WriteString("}\n\nvar OperationRequestBodies = map[string]string{\n")
+	for _, e := range entries {
+		if len(e.Body) > 0 {
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, e.Body); err != nil {
+				return nil, err
+			}
+			fmt.Fprintf(&b, "%q:%q,\n", e.Key, compact.String())
 		}
 	}
 	b.WriteString("}\n")

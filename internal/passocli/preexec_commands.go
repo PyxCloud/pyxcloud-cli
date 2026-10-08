@@ -119,6 +119,7 @@ func operationInputSupport(operation string) (hasInput, required bool) {
 // operation always requires the selected project from the root --project flag.
 func operationCommand(use, stage, operation string, projectRequired, bodyIdempotency bool, makeRuntime func(*cobra.Command) (*Runtime, error), query func(*cobra.Command) (url.Values, error)) *cobra.Command {
 	cmd := &cobra.Command{Use: use, Args: cobra.NoArgs}
+	describeOperationInput(cmd, operation)
 	hasInput, inputRequired := operationInputSupport(operation)
 	if hasInput {
 		cmd.Flags().String("input", "", "JSON input file or - for stdin")

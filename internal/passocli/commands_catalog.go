@@ -16,6 +16,9 @@ type commandsCatalog struct {
 }
 
 type commandDescription struct {
+	InputSchema      json.RawMessage   `json:"inputSchema,omitempty"`
+	InputExample     json.RawMessage   `json:"inputExample,omitempty"`
+	BodyRequired     bool              `json:"bodyRequired,omitempty"`
 	Path             string            `json:"path"`
 	Use              string            `json:"use"`
 	ShortDescription string            `json:"shortDescription"`
@@ -80,6 +83,9 @@ func appendCommandDescriptions(root, cmd *cobra.Command, out *[]commandDescripti
 		ShortDescription: short,
 		Hidden:           false,
 		Flags:            commandFlags(cmd),
+		InputSchema:      json.RawMessage(cmd.Annotations["inputSchema"]),
+		InputExample:     json.RawMessage(cmd.Annotations["inputExample"]),
+		BodyRequired:     cmd.Annotations["bodyRequired"] == "true",
 	})
 	for _, child := range cmd.Commands() {
 		appendCommandDescriptions(root, child, out)
