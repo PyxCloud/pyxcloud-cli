@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +20,17 @@ import (
 
 const maxResponseBytes = 2 << 20
 
+var organizationIDPattern = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+// ValidOrganizationID accepts a UUID without whitespace or header delimiters.
+func ValidOrganizationID(value string) bool { return organizationIDPattern.MatchString(value) }
+
 // Client sends authenticated requests to a Passo API base URL.
 type Client struct {
-	BaseURL     string
-	HTTPClient  *http.Client
-	AccessToken func(context.Context) (string, error)
+	OrganizationID string
+	BaseURL        string
+	HTTPClient     *http.Client
+	AccessToken    func(context.Context) (string, error)
 }
 
 // Response contains the raw response body. Export endpoints may return bytes
@@ -70,6 +77,9 @@ func (c *Client) Do(ctx context.Context, method, path string, body json.RawMessa
 // If-Match header. A nil version preserves Do's existing request behavior.
 func (c *Client) DoWithIfMatch(ctx context.Context, method, path string, body json.RawMessage, idempotencyKey string, ifMatch *int64) (Response, error) {
 	var zero Response
+	if c.OrganizationID != "" && !ValidOrganizationID(c.OrganizationID) {
+		return zero, errors.New("invalid organization")
+	}
 	if ifMatch != nil && *ifMatch < 0 {
 		return zero, errors.New("invalid If-Match version")
 	}
@@ -103,6 +113,9 @@ func (c *Client) DoWithIfMatch(ctx context.Context, method, path string, body js
 		return zero, errors.New("request failed")
 	}
 	req.Header.Set("Accept", "application/json")
+	if c.OrganizationID != "" {
+		req.Header.Set("X-Organization-Id", c.OrganizationID)
+	}
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
 	}

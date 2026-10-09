@@ -14,7 +14,7 @@ import (
 )
 
 func TestClosedContextPhasesPreserveTimeoutCode(t *testing.T) {
-	for _, phase := range []string{"credential_read", "refresh", "http_request"} {
+	for _, phase := range []string{"credential_read", "credential_write", "refresh", "http_request"} {
 		err := classify(passoauth.ContextPhase(phase, context.DeadlineExceeded))
 		var exit *ExitError
 		var diagnostic *phaseExitError

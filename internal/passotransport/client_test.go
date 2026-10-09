@@ -218,3 +218,14 @@ func TestCredentialStoreFailurePreservesOnlySafeRecoveryType(t *testing.T) {
 		t.Fatalf("unsafe or lost recovery: %v request=%v", err, hit)
 	}
 }
+
+func TestOrganizationRejectsInvalidBeforeCredentials(t *testing.T) {
+	c := New("http://127.0.0.1", func(context.Context) (string, error) {
+		t.Fatal("invalid organization read credentials")
+		return "", nil
+	})
+	c.OrganizationID = "bad\r\nheader"
+	if _, err := c.Do(context.Background(), http.MethodGet, "/test", nil, ""); err == nil {
+		t.Fatal("invalid organization accepted")
+	}
+}

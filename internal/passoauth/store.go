@@ -74,6 +74,9 @@ func (s *keychainStore) Save(profile string, token Token) error {
 		return errors.New("could not encode credentials")
 	}
 	err = s.nativeSave("passo-cli/"+profile, "oauth", data)
+	if errors.Is(err, ErrCredentialAccessRequired) {
+		return ErrCredentialAccessRequired
+	}
 	if err != nil {
 		return ErrCredentialStoreUnavailable
 	}

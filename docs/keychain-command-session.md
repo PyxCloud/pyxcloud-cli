@@ -40,3 +40,13 @@ Ad-hoc signing verifies the current artifact's integrity. Its designated require
 | Interpret every failure as expired login | Preserve redacted errors and inspect executable identity first |
 | Repeatedly retry denied Keychain access | Stop, resolve normal exact-application access, retry once |
 | Treat ad-hoc signing as Developer ID signing | Report the signing limitation explicitly |
+
+## Organization scope
+
+Use `passo --organization <organization-uuid> --project <project-id> status` when a project belongs to an organization other than the token default. The CLI sends `X-Organization-Id`; the API still verifies membership. Omit the flag to retain the existing default. Workflow ledger writes retain the selected organization, and subsequent commands reject an explicitly different organization for that ledger. Credentials remain scoped to the API profile.
+
+Refresh updates query the same file-based Keychain record with `kSecUseAuthenticationUIFail`, then update only that reference with the same per-query policy. Authentication-required errors remain `credential_access_required`. Initial explicit login creation keeps its default Keychain and ACL. No process-wide interaction setting or access list is changed.
+
+Security.framework writes remain synchronous and cannot be canceled once entered. A deadline observed after a write returns prevents token use, but does not assert that the write was undone. Stable signing across updates is still required for seamless credential access.
+
+Apple references: [search attributes](https://developer.apple.com/documentation/security/search-attribute-keys-and-values), [UI fail](https://developer.apple.com/documentation/security/ksecuseauthenticationuifail), [Mac Keychain implementations](https://developer.apple.com/documentation/technotes/tn3137-on-mac-keychains).

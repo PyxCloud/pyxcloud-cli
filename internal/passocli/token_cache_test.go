@@ -150,3 +150,28 @@ func TestTokenCacheHonorsDeadlineDuringCredentialRead(t *testing.T) {
 		t.Fatalf("late credential was accepted: error=%v", err)
 	}
 }
+
+type canceledWriteStore struct {
+	countedTokenStore
+	cancel context.CancelFunc
+}
+
+func (s *canceledWriteStore) Save(_ string, _ passoauth.Token) error {
+	s.saves++
+	s.cancel()
+	return nil
+}
+func TestRefreshWriteDeadlineDoesNotUseWrittenToken(t *testing.T) {
+	t.Setenv("PASSO_ACCESS_TOKEN", "")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	store := &canceledWriteStore{countedTokenStore: countedTokenStore{token: passoauth.Token{RefreshToken: "owned-old"}}, cancel: cancel}
+	access := cachedTokenAccess(store, "staging", time.Now, func(context.Context, string) (passoauth.Token, error) {
+		return passoauth.Token{AccessToken: "owned-new", ExpiresAt: time.Now().Add(time.Hour)}, nil
+	})
+	token, err := access(ctx)
+	var phase *passoauth.PhaseError
+	if token != "" || !errors.As(err, &phase) || phase.Phase != "credential_write" || !errors.Is(err, context.Canceled) || store.saves != 1 {
+		t.Fatalf("write result not safely rejected: token present=%t error=%v writes=%d", token != "", err, store.saves)
+	}
+}
