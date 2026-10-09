@@ -36,6 +36,7 @@ func ValidVersionLabel(label string) bool {
 type Ledger struct {
 	SchemaVersion   int                  `json:"schemaVersion"`
 	Profile         string               `json:"profile"`
+	OrganizationID  string               `json:"organizationId,omitempty"`
 	ProjectID       int64                `json:"projectId"`
 	VersionID       string               `json:"versionId"`
 	VersionLabel    string               `json:"versionLabel,omitempty"`

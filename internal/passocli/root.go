@@ -91,7 +91,7 @@ func New(opts Options) *cobra.Command {
 	if opts.Now == nil {
 		opts.Now = time.Now
 	}
-	var profile, version, versionLabel, release, runID, environment, ledgerPath, evidenceDir string
+	var organization, profile, version, versionLabel, release, runID, environment, ledgerPath, evidenceDir string
 	var project, expected, versionSequence int64
 	var asJSON bool
 	var timeout, poll time.Duration
@@ -101,6 +101,7 @@ func New(opts Options) *cobra.Command {
 	f := root.PersistentFlags()
 	f.StringVar(&profile, "profile", "sandbox", "API profile")
 	f.Int64Var(&project, "project", 0, "project ID")
+	f.StringVar(&organization, "organization", "", "organization UUID (membership verified by the API)")
 	f.StringVar(&version, "version", "", "version ID")
 	f.StringVar(&versionLabel, "version-label", "", "version label (Git ref)")
 	f.Int64Var(&versionSequence, "version-sequence", 0, "numeric project version sequence")
@@ -151,7 +152,7 @@ func New(opts Options) *cobra.Command {
 	root.AddCommand(newDoctorCommand(&profile, &ledgerPath, &project, &asJSON, os.UserHomeDir))
 	return root
 }
-func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64, version, versionLabel string, versionSequence int64, release, runID, environment string, expected int64, ledgerPath, evidenceDir string, asJSON bool, poll, timeout time.Duration) (*Runtime, error) {
+func buildRuntime(cmd *cobra.Command, opts Options, profile string, project int64, version, versionLabel string, versionSequence int64, release, runID, environment string, expected int64, ledgerPath, evidenceDir string, asJSON bool, poll, timeout time.Duration) (*Runtime, error) {
 	if versionSequence < 0 {
 		return nil, &ExitError{20, "invalid_version_sequence"}
 	}
@@ -166,6 +167,23 @@ func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64,
 	if err != nil {
 		return nil, &ExitError{20, "invalid_ledger"}
 	}
+	organization := ""
+	if cmd != nil {
+		organization, _ = cmd.Flags().GetString("organization")
+	}
+	if organization != "" && !passotransport.ValidOrganizationID(organization) {
+		return nil, &ExitError{20, "invalid_organization"}
+	}
+	if ledger.OrganizationID != "" && !passotransport.ValidOrganizationID(ledger.OrganizationID) {
+		return nil, &ExitError{20, "invalid_ledger"}
+	}
+	if organization != "" && ledger.OrganizationID != "" && organization != ledger.OrganizationID {
+		return nil, &ExitError{20, "scope_mismatch"}
+	}
+	if organization == "" {
+		organization = ledger.OrganizationID
+	}
+	ledger.OrganizationID = organization
 	if ledger.Profile != "" && ledger.Profile != profile {
 		return nil, &ExitError{20, "scope_mismatch"}
 	}
@@ -206,6 +224,7 @@ func buildRuntime(_ *cobra.Command, opts Options, profile string, project int64,
 		return (&passoauth.OAuth{Profile: p, HTTPClient: opts.HTTPClient}).Refresh(ctx, refreshToken)
 	})
 	client := passotransport.New(p.APIURL, access)
+	client.OrganizationID = organization
 	if opts.HTTPClient != nil {
 		client.HTTPClient = opts.HTTPClient
 	}
