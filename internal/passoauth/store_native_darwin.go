@@ -8,14 +8,49 @@ package passoauth
 #include <Security/Security.h>
 #include <stdlib.h>
 static OSStatus passoSave(const char *service, UInt32 serviceLen, const char *account, UInt32 accountLen, const void *data, UInt32 dataLen) {
-    SecKeychainItemRef item = NULL;
-    OSStatus status = SecKeychainFindGenericPassword(NULL, serviceLen, service, accountLen, account, NULL, NULL, &item);
+    CFStringRef svc = CFStringCreateWithBytes(NULL, (const UInt8 *)service, serviceLen, kCFStringEncodingUTF8, false);
+    CFStringRef acct = CFStringCreateWithBytes(NULL, (const UInt8 *)account, accountLen, kCFStringEncodingUTF8, false);
+    if (!svc || !acct) {
+        if (svc) CFRelease(svc);
+        if (acct) CFRelease(acct);
+        return errSecAllocate;
+    }
+    const void *keys[] = {kSecClass, kSecAttrService, kSecAttrAccount, kSecReturnRef, kSecMatchLimit, kSecUseAuthenticationUI};
+    const void *values[] = {kSecClassGenericPassword, svc, acct, kCFBooleanTrue, kSecMatchLimitOne, kSecUseAuthenticationUIFail};
+    CFDictionaryRef query = CFDictionaryCreate(NULL, keys, values, 6, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CFRelease(svc);
+    CFRelease(acct);
+    if (!query) return errSecAllocate;
+    CFTypeRef item = NULL;
+    OSStatus status = SecItemCopyMatching(query, &item);
+    CFRelease(query);
     if (status == errSecItemNotFound) {
+        // Initial login keeps the existing default-keychain/default-ACL creation.
         return SecKeychainAddGenericPassword(NULL, serviceLen, service, accountLen, account, dataLen, data, NULL);
     }
-    if (status != errSecSuccess) return status;
-    status = SecKeychainItemModifyAttributesAndData(item, NULL, dataLen, data);
+    if (status != errSecSuccess) { if (item) CFRelease(item); return status; }
+    if (!item) return errSecInternalComponent;
+    // Update only the exact first matching record, preserving legacy search semantics.
+    CFArrayRef items = CFArrayCreate(NULL, &item, 1, &kCFTypeArrayCallBacks);
     CFRelease(item);
+    CFDataRef payload = CFDataCreate(NULL, data, dataLen);
+    if (!items || !payload) {
+        if (items) CFRelease(items);
+        if (payload) CFRelease(payload);
+        return errSecAllocate;
+    }
+    const void *updateKeys[] = {kSecClass, kSecMatchItemList, kSecUseAuthenticationUI};
+    const void *updateValues[] = {kSecClassGenericPassword, items, kSecUseAuthenticationUIFail};
+    CFDictionaryRef updateQuery = CFDictionaryCreate(NULL, updateKeys, updateValues, 3, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    const void *attrKeys[] = {kSecValueData};
+    const void *attrValues[] = {payload};
+    CFDictionaryRef attrs = CFDictionaryCreate(NULL, attrKeys, attrValues, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    if (!updateQuery || !attrs) status = errSecAllocate;
+    else status = SecItemUpdate(updateQuery, attrs);
+    if (updateQuery) CFRelease(updateQuery);
+    if (attrs) CFRelease(attrs);
+    CFRelease(items);
+    CFRelease(payload);
     return status;
 }
 // The query targets the existing file-based generic-password record. Do not set
@@ -77,6 +112,9 @@ func nativeKeychainSave(service, account string, data []byte) error {
 	payload := C.CBytes(data)
 	defer C.free(payload)
 	status := C.passoSave(svc, C.UInt32(len(service)), acct, C.UInt32(len(account)), payload, C.UInt32(len(data)))
+	if status == C.errSecInteractionNotAllowed {
+		return ErrCredentialAccessRequired
+	}
 	if status != C.errSecSuccess {
 		return errors.New("could not save credentials to Keychain")
 	}

@@ -118,3 +118,10 @@ func TestNoninteractiveAccessRequiredPreservesStoredRecord(t *testing.T) {
 		t.Fatal("OS interaction refusal lost")
 	}
 }
+
+func TestSavePreservesCredentialAccessRequired(t *testing.T) {
+	s := &keychainStore{platform: "darwin", nativeSave: func(string, string, []byte) error { return ErrCredentialAccessRequired }}
+	if err := s.Save("staging", Token{AccessToken: "owned-dummy"}); !errors.Is(err, ErrCredentialAccessRequired) {
+		t.Fatalf("error=%v", err)
+	}
+}

@@ -58,6 +58,10 @@ func cachedTokenAccess(store passoauth.Store, profile string, now func() time.Ti
 			loadErr = err
 			return "", err
 		}
+		if err := ctx.Err(); err != nil {
+			loadErr = passoauth.ContextPhase("credential_write", err)
+			return "", loadErr
+		}
 		token = fresh
 		return token.AccessToken, nil
 	}
