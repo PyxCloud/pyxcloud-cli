@@ -330,28 +330,6 @@ func TestSettingsTeamListsUsers(t *testing.T) {
 	}
 }
 
-func TestSettingsSeatsReturnsUsage(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rbac/org/seats" {
-			t.Errorf("Unexpected path: %s", r.URL.Path)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"used": 3, "max": 10, "remaining": 7,
-		})
-	}))
-	defer srv.Close()
-
-	c := NewClient(srv.URL, "pyxc_test")
-	seats, err := c.SettingsSeats()
-	if err != nil {
-		t.Fatalf("SettingsSeats failed: %v", err)
-	}
-	if seats["max"] != float64(10) {
-		t.Errorf("Max: got %v", seats["max"])
-	}
-}
-
 func TestSettingsInviteSendsEmail(t *testing.T) {
 	var capturedBody map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -304,7 +304,7 @@ pyxcloud keystore delete --id 5 --force
 
 ### `pyxcloud settings`
 
-Organisation administration — identity, team, roles, seats, and API token lifecycle.
+Organisation administration — identity, team, roles, and API token lifecycle.
 
 ```bash
 # Current identity
@@ -312,7 +312,6 @@ pyxcloud settings whoami
 
 # Team management (admin)
 pyxcloud settings team
-pyxcloud settings seats
 pyxcloud settings invite --email dev@company.com
 
 # Role management

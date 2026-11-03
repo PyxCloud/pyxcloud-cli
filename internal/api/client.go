@@ -323,19 +323,6 @@ func (c *Client) SettingsUsers() ([]map[string]interface{}, error) {
 	return result, json.Unmarshal(data, &result)
 }
 
-// SettingsSeats returns seat usage info.
-func (c *Client) SettingsSeats() (map[string]interface{}, error) {
-	data, status, err := c.DoRequest("GET", "/rbac/org/seats", nil)
-	if err != nil {
-		return nil, err
-	}
-	if status != 200 {
-		return nil, fmt.Errorf("seats failed (HTTP %d): %s", status, string(data))
-	}
-	var result map[string]interface{}
-	return result, json.Unmarshal(data, &result)
-}
-
 // SettingsInvite sends an invitation to a user.
 func (c *Client) SettingsInvite(body interface{}) (map[string]interface{}, error) {
 	data, status, err := c.DoRequest("POST", "/rbac/invite", body)
