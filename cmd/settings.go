@@ -21,7 +21,6 @@ var settingsCmd = &cobra.Command{
 
   pyxcloud settings whoami
   pyxcloud settings team
-  pyxcloud settings seats
   pyxcloud settings invite --email user@example.com
   pyxcloud settings assign-role --user-id <id> --role pyx-developer-role
   pyxcloud settings tokens
@@ -101,32 +100,6 @@ var settingsTeamCmd = &cobra.Command{
 			fmt.Fprintf(w, "%v\t%v\t%v\t%s\n",
 				u["id"], u["name"], u["email"], roles)
 		}
-		return w.Flush()
-	},
-}
-
-// ── seats ────────────────────────────────────────────────────────────────
-
-var settingsSeatsCmd = &cobra.Command{
-	Use:   "seats",
-	Short: "Show seat usage for the organisation",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		client, err := getClient()
-		if err != nil {
-			return err
-		}
-
-		seats, err := client.SettingsSeats()
-		if err != nil {
-			return fmt.Errorf("seats: %w", err)
-		}
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 3, ' ', 0)
-		fmt.Fprintln(w, "")
-		fmt.Fprintf(w, "  Used:\t%v\n", seats["used"])
-		fmt.Fprintf(w, "  Max:\t%v\n", seats["max"])
-		fmt.Fprintf(w, "  Remaining:\t%v\n", seats["remaining"])
-		fmt.Fprintln(w, "")
 		return w.Flush()
 	},
 }
@@ -314,7 +287,6 @@ func init() {
 
 	settingsCmd.AddCommand(settingsWhoamiCmd)
 	settingsCmd.AddCommand(settingsTeamCmd)
-	settingsCmd.AddCommand(settingsSeatsCmd)
 	settingsCmd.AddCommand(settingsInviteCmd)
 	settingsCmd.AddCommand(settingsAssignRoleCmd)
 	settingsCmd.AddCommand(settingsRemoveRoleCmd)
